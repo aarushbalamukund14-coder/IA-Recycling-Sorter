@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recycling Sorter AI — Expanded Material Scanner</title>
+
+<!-- ============================================================
+     RECYCLING SORTER  ·  Techno-Fest Project
+     One file: HTML (structure) + CSS (look) + JavaScript (brain).
+     Needs internet once: fonts + AI model load from a CDN.
+
+     DESIGN IDEA: a luxury watch / jewellery-house feel.
+       - deep emerald "cyber-green" glass, champagne-gold hairlines
+       - the camera is a lens with a gold bezel; its tick marks light
+         up while you hold an item (that IS the 2-second timer)
+       - bins are arched niches, each lit by its own gemstone colour
+     ============================================================ -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ===================== 1. DESIGN TOKENS ===================== */
+:root{
+  --abyss:#021410;            /* deepest background            */
+  --emerald:#07281f;          /* panels / stage                */
+  --jade:#0d4535;
+  --gold:#e3c98f;             /* champagne gold: lines, buttons */
+  --gold-dim:rgba(227,201,143,.30);
+  --gold-line:rgba(227,201,143,.16);
+  --ivory:#f4efe2;            /* main text                     */
+  --muted:#a9bfb3;            /* secondary text                */
+  --live:#5dffb6;             /* "AI is live" green, used sparingly */
+  --display:"Bodoni Moda","Didot","Bodoni 72",Georgia,serif;
+  --ui:"Hanken Grotesk","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{
+  min-height:100vh;color:var(--ivory);font-family:var(--ui);font-size:15px;line-height:1.5;
+  background:
+    radial-gradient(900px 520px at 50% -10%,rgba(227,201,143,.16),transparent 62%),   /* soft gold light from above */
+    radial-gradient(800px 600px at -5% 60%,rgba(20,120,80,.28),transparent 60%),
+    radial-gradient(700px 500px at 105% 30%,rgba(10,90,90,.25),transparent 60%),
+    var(--abyss);
+  background-attachment:fixed;overflow-x:hidden;
+}
+/* fine film grain: makes the dark surfaces feel like fabric, not flat screen */
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:70;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+:focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:8px}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60}  /* confetti layer */
+.app{position:relative;max-width:1260px;margin:0 auto;padding:22px 22px 48px}
+
+/* ===================== 2. HEADER + SCOREBOARD ===================== */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;
+  padding:6px 4px 20px;margin-bottom:22px;border-bottom:1px solid var(--gold-line)}
+.brand{display:flex;align-items:center;gap:16px}
+.emblem{width:54px;height:54px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--gold);
+  border:1px solid var(--gold-dim);background:radial-gradient(circle at 30% 25%,rgba(227,201,143,.22),rgba(227,201,143,.03));
+  box-shadow:0 0 0 5px rgba(227,201,143,.05),0 0 30px rgba(227,201,143,.18)}
+.emblem svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.brand h1{font:italic 500 clamp(26px,3.4vw,38px)/1 var(--display);letter-spacing:.005em}
+.brand p{color:var(--muted);font-size:13.5px;margin-top:6px}
+.scores{display:flex;align-items:stretch}
+.score-item{padding:2px 22px;text-align:center;border-left:1px solid var(--gold-line)}
+.score-item:first-child{border-left:0}
+.score-item b{display:block;font:italic 500 clamp(28px,3.2vw,40px)/1.05 var(--display);color:var(--gold);
+  font-variant-numeric:lining-nums tabular-nums}
+.score-item span{font-size:12.5px;color:var(--muted)}
+.score-item b.pop{animation:pop .5s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.28);text-shadow:0 0 24px var(--gold)}100%{transform:scale(1)}}
+@media (max-width:620px){.score-item{padding:2px 12px}}
+
+/* ===================== 3. LAYOUT + PANELS ===================== */
+.layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:22px;align-items:start}
+.right{display:flex;flex-direction:column;gap:22px}
+@media (max-width:1000px){.layout{grid-template-columns:1fr}}
+.panel{
+  padding:22px;border-radius:28px;border:1px solid var(--gold-line);
+  background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.015));
+  backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
+  box-shadow:0 30px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.panel-head h2{font:italic 500 24px/1.1 var(--display);color:var(--gold)}
+.panel-head .hint{font-size:13px;color:var(--muted)}
+
+/* AI status chip */
+.chip{display:inline-flex;align-items:center;gap:9px;padding:6px 14px;border-radius:999px;font-size:13px;
+  background:rgba(0,0,0,.3);border:1px solid var(--gold-line);color:var(--muted)}
+.chip i{width:8px;height:8px;border-radius:50%;background:#6b7f75}
+.chip.loading i{background:var(--gold);animation:blink 1.1s infinite}
+.chip.ready{color:var(--ivory)}
+.chip.ready i{background:var(--live);box-shadow:0 0 10px var(--live)}
+.chip.error i{background:#ff7a8c}
+@keyframes blink{50%{opacity:.25}}
+
+/* ===================== 4. THE LENS (camera stage) ===================== */
+.stage{position:relative;aspect-ratio:4/3;border-radius:30px;overflow:hidden;background:#010a07;
+  border:1px solid var(--gold-dim);
+  box-shadow:0 0 0 7px rgba(227,201,143,.05),0 40px 90px rgba(0,0,0,.6),inset 0 0 60px rgba(0,0,0,.6)}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.stage video.nomirror{transform:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:4;padding:7px 18px;border-radius:999px;
+  font-size:13.5px;font-weight:600;white-space:nowrap;color:var(--ivory);
+  background:rgba(2,20,16,.62);border:1px solid var(--gold-line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+/* invitation card that sits INSIDE the lens before the camera starts */
+.placeholder{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;text-align:center;padding:20px;transition:opacity .5s;
+  background:radial-gradient(circle at 50% 45%,#0d4535 0%,#052318 55%,#021410 100%)}
+.placeholder.hidden{opacity:0;pointer-events:none}
+.placeholder h3{font:italic 500 clamp(26px,3.6vw,36px)/1.05 var(--display);color:var(--ivory)}
+.placeholder .ph-sub{color:var(--muted);font-size:14px;max-width:260px}
+@media (max-width:560px){.placeholder .ph-sub{display:none}}
+.cam-problem{max-width:300px;padding:12px 14px;border-radius:16px;text-align:left;font-size:13px;color:var(--ivory);
+  background:rgba(255,122,140,.1);border:1px solid rgba(255,122,140,.4)}
+.cam-problem .cp-title{font-weight:700;margin-bottom:6px}
+.cam-problem ol{margin-left:18px;display:grid;gap:4px;color:var(--muted)}
+.stage.halo{animation:halo 1s ease-out}                 /* glow after a successful sort */
+@keyframes halo{0%{box-shadow:0 0 0 7px color-mix(in srgb,var(--c) 40%,transparent),0 0 90px var(--c),inset 0 0 80px color-mix(in srgb,var(--c) 40%,transparent)}
+                100%{box-shadow:0 0 0 7px rgba(227,201,143,.05),0 40px 90px rgba(0,0,0,.6),inset 0 0 60px rgba(0,0,0,.6)}}
+.float-score{position:absolute;left:50%;top:40%;z-index:5;transform:translate(-50%,0);font:italic 600 clamp(44px,7vw,70px)/1 var(--display);
+  color:var(--c);text-shadow:0 0 30px var(--c);pointer-events:none;white-space:nowrap;animation:floatUp 1.4s ease-out forwards}
+@keyframes floatUp{0%{opacity:0;transform:translate(-50%,24px) scale(.7)}18%{opacity:1;transform:translate(-50%,0) scale(1.08)}100%{opacity:0;transform:translate(-50%,-90px) scale(1)}}
+
+/* buttons: gold (main action) + ghost (everything else) */
+.btn{font:600 14px var(--ui);padding:12px 24px;border-radius:999px;cursor:pointer;color:var(--ivory);
+  border:1px solid var(--gold-dim);background:transparent;transition:background .2s,border-color .2s,transform .15s,box-shadow .2s}
+.btn:hover{background:rgba(227,201,143,.1);border-color:var(--gold)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn.gold{color:#1c1606;border-color:transparent;background:linear-gradient(180deg,#f3e1b0,#cfae67);
+  box-shadow:0 10px 30px rgba(227,201,143,.28),inset 0 1px 0 rgba(255,255,255,.65)}
+.btn.gold:hover{box-shadow:0 14px 40px rgba(227,201,143,.45),inset 0 1px 0 rgba(255,255,255,.65)}
+.btn.small{padding:8px 16px;font-size:13px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
+
+/* ===================== 5. READING (live results) ===================== */
+.reading{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;margin-top:18px;padding-top:20px;border-top:1px solid var(--gold-line)}
+@media (max-width:620px){.reading{grid-template-columns:1fr}}
+.reading .small-label{font-size:13px;color:var(--muted);margin-bottom:4px}
+.obj{font:italic 500 clamp(30px,4vw,42px)/1.05 var(--display);min-height:1.1em;overflow-wrap:anywhere}
+.badge{display:inline-block;margin-top:12px;padding:5px 16px;border-radius:999px;font-weight:700;font-size:14px;
+  color:var(--muted);background:rgba(255,255,255,.08);transition:background .25s,color .25s}
+.meters{display:grid;gap:18px;align-content:center}
+
+.material-line{margin-top:11px;max-width:46ch;font-size:13px;line-height:1.55;color:var(--muted)}
+.deep-scan{margin-top:18px;padding:18px;border-radius:20px;border:1px solid var(--gold-dim);background:linear-gradient(145deg,rgba(13,69,53,.55),rgba(2,20,16,.38))}
+.deep-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.deep-head h3{font:italic 500 21px/1.15 var(--display);color:var(--gold)}
+.deep-head p{max-width:62ch;margin-top:7px;color:var(--muted);font-size:13px;line-height:1.55}
+.deep-chip{flex:none;max-width:170px;padding:6px 10px;border-radius:999px;border:1px solid var(--gold-line);color:var(--muted);font-size:11px;text-align:center}
+.deep-chip.loading{color:var(--gold);border-color:var(--gold-dim)}
+.deep-chip.ready{color:var(--live);border-color:rgba(93,255,182,.35)}
+.deep-chip.error{color:#ff9bab;border-color:rgba(255,122,140,.45)}
+.deep-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+.deep-help,.deep-disclaimer{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.6}
+.deep-results{margin-top:17px;padding-top:16px;border-top:1px solid var(--gold-line);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.88fr);gap:18px}
+.deep-results[hidden]{display:none!important}
+.deep-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);margin-bottom:7px}
+.deep-result-primary h3{font:italic 500 clamp(22px,3vw,29px)/1.1 var(--display);color:var(--ivory);overflow-wrap:anywhere}
+.deep-score{margin-top:7px;color:var(--gold);font-size:12px;font-variant-numeric:tabular-nums}.deep-material{margin-top:12px;color:var(--ivory);font-size:13px;line-height:1.5}
+.deep-guidance{margin-top:7px;color:var(--muted);font-size:12.5px;line-height:1.55}
+.deep-result-primary .btn{margin-top:14px}
+.deep-alternatives{list-style:none;display:grid;gap:12px}
+.deep-alternatives li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:12px;color:var(--ivory)}
+.deep-alternatives .alt-name{overflow-wrap:anywhere}
+.deep-alternatives .alt-cat{grid-column:1/-1;color:var(--muted);font-size:11px}
+.deep-alternatives .alt-track{grid-column:1/-1;height:4px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+.deep-alternatives .alt-track span{display:block;height:100%;border-radius:99px;background:var(--gold)}
+.deep-alternatives .alt-score{color:var(--gold);font-variant-numeric:tabular-nums}
+.deep-disclaimer{grid-column:1/-1;margin-top:0}
+@media(max-width:620px){.deep-head{flex-direction:column}.deep-chip{max-width:100%}.deep-results{grid-template-columns:1fr}.deep-disclaimer{grid-column:auto}}
+.meter-row .top-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:7px}
+.meter-row .top-row b{color:var(--ivory);font-weight:600;font-variant-numeric:tabular-nums}
+.meter{height:6px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+.meter>div{height:100%;width:0;border-radius:99px;transition:width .2s linear}
+#confBar{background:linear-gradient(90deg,#1fbf8a,var(--live))}
+#holdBar{background:linear-gradient(90deg,#b8964a,var(--gold));transition:none}
+
+/* raw AI guesses */
+.raw{margin-top:18px;padding-top:14px;border-top:1px solid var(--gold-line)}
+.raw summary{cursor:pointer;font-size:14px;color:var(--gold);list-style:none}
+.raw summary::-webkit-details-marker{display:none}
+.raw summary::before{content:"+";display:inline-block;width:18px;font-weight:700}
+.raw[open] summary::before{content:"–"}
+.raw ul{list-style:none;margin-top:12px;display:grid;gap:8px}
+.raw li{display:grid;grid-template-columns:minmax(0,1fr) 100px 40px;gap:10px;align-items:center;font-size:12px;color:var(--muted)}
+.raw li .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.raw li .m{height:4px;border-radius:9px;background:rgba(255,255,255,.1);overflow:hidden}
+.raw li .m>div{height:100%;background:var(--gold)}
+.raw li .p{text-align:right;font-variant-numeric:tabular-nums}
+.bodyline{margin-top:12px;font-size:13px;color:var(--muted)}
+.testrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px;font-size:13.5px;color:var(--muted)}
+.testrow .btn{padding:6px 14px;font-size:13px;border-color:color-mix(in srgb,var(--c) 55%,transparent);color:var(--c)}
+.testrow .btn:hover{background:color-mix(in srgb,var(--c) 14%,transparent);border-color:var(--c)}
+
+/* ===================== 6. THE ARCHED BINS ===================== */
+.bins{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media (max-width:620px){.bins{grid-template-columns:repeat(3,1fr)}}
+.bin{--c:var(--gold);position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;
+  aspect-ratio:3/4.3;padding:40px 4px 14px;border-radius:999px 999px 18px 18px;color:var(--muted);
+  border:1px solid var(--gold-line);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.012));
+  transition:transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s,border-color .35s,color .35s,background .35s}
+/* the little gem at the top of each arch */
+.bin::before{content:"";position:absolute;top:17px;left:50%;width:9px;height:9px;transform:translateX(-50%) rotate(45deg);
+  background:var(--c);opacity:.35;transition:opacity .3s,box-shadow .3s}
+.bin .ico{flex:1;display:grid;place-items:center}
+.bin svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.bin .bn{font-size:12.5px;font-weight:600;color:var(--ivory);margin-top:6px;text-align:center}
+.bin .bc{font:italic 500 24px/1.1 var(--display);color:var(--gold);font-variant-numeric:lining-nums}
+/* matching bin lights up in its own gemstone colour */
+.bin.active{transform:translateY(-7px);color:var(--c);border-color:var(--c);
+  background:radial-gradient(120% 75% at 50% 0%,color-mix(in srgb,var(--c) 34%,transparent),transparent 72%),rgba(255,255,255,.04);
+  box-shadow:0 0 0 1px var(--c),0 18px 50px color-mix(in srgb,var(--c) 40%,transparent)}
+.bin.active::before{opacity:1;box-shadow:0 0 16px var(--c)}
+/* a sweep of light crosses the bin after a successful sort */
+.bin::after{content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;pointer-events:none;
+  background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%);background-size:250% 100%;background-position:150% 0}
+.bin.sorted::after{animation:shine 1s ease-out}
+@keyframes shine{0%{opacity:1;background-position:150% 0}85%{opacity:1}100%{opacity:0;background-position:-50% 0}}
+
+/* ===================== 7. FIELD NOTES (science) ===================== */
+.notes{--c:var(--gold)}
+.notes-head{display:flex;gap:16px;align-items:center}
+.n-ico{width:64px;height:64px;flex:none;display:grid;place-items:center;border-radius:50%;color:var(--c);
+  border:1px solid color-mix(in srgb,var(--c) 60%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);
+  box-shadow:0 0 28px color-mix(in srgb,var(--c) 30%,transparent)}
+.n-ico svg{width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.n-title{font:italic 500 clamp(28px,3.4vw,36px)/1.05 var(--display);color:var(--c)}
+.n-sub{color:var(--muted);font-size:14px;margin-top:3px}
+.decomp{margin-top:22px;padding-top:18px;border-top:1px solid var(--gold-line)}
+.decomp .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;color:var(--muted);font-size:13.5px}
+.decomp .row b{font:italic 500 28px/1 var(--display);color:var(--ivory)}
+.track{position:relative;height:6px;border-radius:99px;background:rgba(255,255,255,.1);margin:12px 0 7px}
+.track>div{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--c));transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.scale{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.fact{margin:22px 0 0;padding-left:18px;border-left:2px solid var(--c)}
+.fact p{font:italic 400 clamp(18px,2vw,21px)/1.5 var(--display)}
+.tip{margin-top:18px;color:var(--muted);font-size:14px}
+.tip strong{color:var(--ivory);font-weight:600}
+.note{margin-top:14px;padding:12px 14px;border-radius:14px;font-size:13.5px;color:var(--ivory);background:rgba(227,201,143,.08);border:1px solid var(--gold-dim)}
+.notes .btn{margin-top:20px}
+
+/* toasts */
+#toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:65;align-items:center;pointer-events:none}
+.toast{padding:10px 20px;border-radius:999px;font-size:14px;font-weight:600;background:rgba(2,20,16,.92);color:var(--ivory);
+  border:1px solid var(--gold-dim);box-shadow:0 10px 40px rgba(0,0,0,.5);animation:toastIn .35s ease}
+.toast.bad{border-color:rgba(255,122,140,.6)}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}}
+
+/* how it works */
+.how{margin-top:26px;padding:20px 24px}
+.how summary{cursor:pointer;font:italic 500 22px var(--display);color:var(--gold);list-style:none}
+.how summary::-webkit-details-marker{display:none}
+.how ol{margin:16px 0 0 22px;display:grid;gap:10px;line-height:1.6;max-width:78ch}
+.how p{margin-top:14px;color:var(--muted);font-size:13.5px;max-width:78ch;line-height:1.6}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+
+<body>
+<canvas id="fx"></canvas>
+<div id="toasts" aria-live="polite"></div>
+
+<div class="app">
+
+  <!-- ============ HEADER + SCOREBOARD ============ -->
+  <header class="top">
+    <div class="brand">
+      <div class="emblem" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><path d="M6 26C6 14 13 6 26 6c0 13-7 20-18 20"/><path d="M6 26 18 14"/></svg>
+      </div>
+      <div>
+        <h1>Recycling Sorter AI</h1>
+        <p>Scan everyday items, explore likely materials, and find a safer next step.</p>
+      </div>
+    </div>
+    <div class="scores" role="group" aria-label="Scoreboard">
+      <div class="score-item"><b id="score">0</b><span>Score</span></div>
+      <div class="score-item"><b id="streak">0</b><span>Streak</span></div>
+      <div class="score-item"><b id="mult">x1</b><span>Multiplier</span></div>
+      <div class="score-item"><b id="sorted">0</b><span>Sorted</span></div>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ============ LEFT: LIVE SCANNER ============ -->
+    <section class="panel" aria-label="Live scanner">
+      <div class="panel-head">
+        <h2>Live scanner</h2>
+        <div class="chip" id="chip"><i></i><span id="chipText">AI idle</span></div>
+      </div>
+
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+
+        <div class="placeholder" id="placeholder">
+          <h3>Begin sorting</h3>
+          <p class="ph-sub">Hold one item inside the ring for two seconds. Deep Scan can compare many more item descriptions.</p>
+          <button class="btn gold" id="startBtn2">Allow camera &amp; start</button>
+          <div class="cam-problem" id="camError" hidden>
+            <div class="cp-title" id="cpTitle"></div>
+            <ol id="cpSteps"></ol>
+          </div>
+        </div>
+
+        <canvas id="overlay"></canvas>
+        <div class="banner" id="banner">Camera off</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn gold" id="startBtn">Allow camera &amp; start</button>
+        <button class="btn" id="flipBtn" hidden>Switch camera</button>
+        <button class="btn" id="resetBtn">Reset game</button>
+        <button class="btn" id="soundBtn">Sound on</button>
+      </div>
+
+      <section class="deep-scan" aria-label="Expanded AI scan">
+        <div class="deep-head">
+          <div>
+            <h3>Expanded AI scan</h3>
+            <p>Compare a photo against 100+ detailed item descriptions: fruits, plastic packaging and toys, cans, wood, glass, electronics, batteries and more.</p>
+          </div>
+          <span class="deep-chip" id="deepStatus">Optional model not loaded</span>
+        </div>
+        <div class="deep-actions">
+          <button class="btn" type="button" id="deepScanBtn">Deep scan camera</button>
+          <label class="btn" for="photoInput">Scan a photo</label>
+          <input id="photoInput" type="file" accept="image/*" hidden>
+        </div>
+        <p class="deep-help">Best results: one item clearly visible against a simple background. The optional model downloads from the internet on first use. It suggests visual matches; it cannot guarantee the exact polymer, alloy, brand or product SKU.</p>
+        <div class="deep-results" id="deepResults" hidden>
+          <div class="deep-result-primary">
+            <div class="deep-eyebrow">Best visual match</div>
+            <h3 id="deepItem">—</h3>
+            <span class="badge" id="deepCategory">—</span>
+            <p id="deepScore" class="deep-score"></p>
+            <p id="deepMaterial" class="deep-material"></p>
+            <p id="deepGuidance" class="deep-guidance"></p>
+            <button class="btn gold small" type="button" id="useDeepResult">Use this result &amp; start sorting</button>
+          </div>
+          <div class="deep-alternatives-wrap">
+            <div class="deep-eyebrow">Other likely matches</div>
+            <ul class="deep-alternatives" id="deepAlternatives"></ul>
+          </div>
+          <p class="deep-disclaimer">Match scores are relative to this candidate list, not calibrated probabilities. If the material is unclear, check labels, resin codes, batteries, or local collection rules before disposal.</p>
+        </div>
+      </section>
+
+      <!-- live readout -->
+      <div class="reading">
+        <div>
+          <div class="small-label">Detected object</div>
+          <div class="obj" id="objName">—</div>
+          <span class="badge" id="catBadge">Waiting for an item</span>
+          <p class="material-line" id="materialLine">The likely object and material details will appear here.</p>
+        </div>
+        <div class="meters">
+          <div class="meter-row">
+            <div class="top-row"><span>AI confidence</span><b id="confText">0%</b></div>
+            <div class="meter"><div id="confBar"></div></div>
+          </div>
+          <div class="meter-row">
+            <div class="top-row"><span>Hold steady</span><b id="holdText">0.0 of 2.0 seconds</b></div>
+            <div class="meter"><div id="holdBar"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <details class="raw" open>
+        <summary>What the AI is seeing right now</summary>
+        <ul id="rawList"></ul>
+        <p class="bodyline" id="bodyLine">Hand and face guard: waiting for the camera</p>
+      </details>
+
+      <div class="testrow" id="testRow"><span>No camera? Try a sample item:</span></div>
+    </section>
+
+    <!-- ============ RIGHT: BINS + FIELD NOTES ============ -->
+    <div class="right">
+      <section class="panel" aria-label="Bins">
+        <div class="panel-head"><h2>Where it goes</h2><span class="hint">The matching bin lights up</span></div>
+        <div class="bins" id="bins"></div>
+      </section>
+
+      <section class="panel notes" id="science" aria-label="Science panel">
+        <div class="panel-head"><h2>Field notes</h2></div>
+        <div class="notes-head">
+          <div class="n-ico" id="sciIcon"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10"/><path d="M6 16h20M16 6c4 3 4 17 0 20M16 6c-4 3-4 17 0 20"/></svg></div>
+          <div>
+            <div class="n-title" id="sciTitle">Waiting for an item</div>
+            <div class="n-sub" id="sciSub">Hold something up to the camera</div>
+          </div>
+        </div>
+        <div class="decomp">
+          <div class="row"><span>Time to decompose</span><b id="sciYears">—</b></div>
+          <div class="track"><div id="sciBar"></div></div>
+          <div class="scale"><span>Weeks</span><span>Decades</span><span>Centuries</span></div>
+        </div>
+        <blockquote class="fact"><p id="sciFact"></p></blockquote>
+        <p class="tip"><strong>Sorting tip.</strong> <span id="sciTip"></span></p>
+        <div class="note" id="sciNote" hidden><span id="sciNoteText"></span></div>
+        <button class="btn small" id="nextFact">Show another fact</button>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============ HOW IT WORKS (for the judges) ============ -->
+  <details class="panel how">
+    <summary>How this works</summary>
+    <ol>
+      <li><b>Camera.</b> The browser's <code>getUserMedia</code> gives us a live video stream, only after you press Allow.</li>
+      <li><b>AI model.</b> MobileNetV2, a neural network pre-trained on ImageNet (1,000 object classes), runs inside the browser with TensorFlow.js. The fast scan looks at the current frame and returns its top 10 guesses. A separate on-demand Deep Scan uses a zero-shot image/text model to compare one photo with an expanded catalogue of more than 100 item descriptions.</li>
+      <li><b>Waste mapping.</b> The expanded keyword dictionary maps common object labels to ten suggested waste streams: plastic, metal, paper, organic, glass, e-waste, wood, hazardous/special items, textiles, and residual/mixed waste. The optional Deep Scan compares the photo with specific descriptions such as plastic toys, cans, batteries, electronics, wood and common packaging.</li>
+      <li><b>Hand and face guard.</b> MobileNet has no "hand" or "face" class, so shown a hand it names the nearest object, such as a paintbrush. Before trusting it, MediaPipe's hand and face finders measure how much of the ring a hand or face covers, with a skin-colour check as backup. If one fills the ring and the item guess is weak, the app says "Hand" and refuses to sort. A confident guess still wins, so a bottle held in your hand works. The AI also sees only the square around the ring, so a face in the background is ignored.</li>
+      <li><b>Smoothing.</b> A category has to win a vote over the last 5 readings, so one bad frame cannot fool the sorter.</li>
+      <li><b>Hold and sort.</b> The same category must stay detected for 2 seconds while the ring fills. Then points are awarded, the streak grows, the bin lights up and the field notes teach the facts.</li>
+    </ol>
+    <p>Honest limits: these models recognise visual patterns, not material chemistry. A visual match cannot reliably verify polymer types (PET, HDPE, PVC, PP, PS or ABS), metal alloys, brand or exact product SKU. Deep Scan is an expanded candidate comparison, not a database of millions of products, and its scores are relative rather than calibrated probabilities. Always verify material markings and local recycling guidance. Decomposition figures are broad estimates; actual conditions vary. The hand and face finders download from the internet; without them the app falls back to the skin-colour check. Good light and a plain background give the best results. The optional Deep Scan downloads a larger model from the internet only when you first use it. It can take time and bandwidth; the fast camera scanner remains available if Deep Scan cannot load.</p>
+  </details>
+</div>
+
+<!-- ===== AI LIBRARIES (loaded from CDN) ===== -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   1. CONFIGURATION  — every "magic number" lives here so it is easy to
+      explain and tweak.
+   ===================================================================== */
+const CONFIG = {
+  HOLD_MS: 2000,               // how long the item must be held steady
+  CLASSIFY_INTERVAL_MS: 150,   // ask the AI for a new prediction this often
+  TOP_K: 10,                   // inspect more of MobileNet’s ranked guesses
+  MIN_CATEGORY_SCORE: 0.30,    // a category needs at least 30% combined probability (was 15%, which trusted weak guesses)
+  CROP_FACTOR: 1.25,           // the AI only looks at the square around the ring (1.25 = slightly bigger than the ring)
+  BODY_LOW: 0.20,              // hand / face / skin fills >= 20% of that square: be suspicious
+  BODY_HIGH: 0.45,             // ... fills >= 45%: be very suspicious
+  NEED_CONF_LOW: 0.50,         // while suspicious, an item must still be >= 50% sure to count
+  NEED_CONF_HIGH: 0.75,        // while very suspicious, it must be >= 75% sure
+  FALLBACK_LANDFILL_SCORE: 0.5,// unknown object seen with >=50% -> "Non-Recyclable"
+  HISTORY_SIZE: 5,             // smoothing window (last 5 readings)
+  HISTORY_MIN_VOTES: 2,        // winner needs at least 2 votes in the window
+  GRACE_MS: 600,               // item may vanish this long without resetting the timer
+  BASE_POINTS: 10,             // points per sort before multiplier
+  STREAK_PER_LEVEL: 3,         // multiplier goes up every 3 sorts in a row
+  MAX_MULTIPLIER: 5,
+  STREAK_TIMEOUT_MS: 15000     // streak is lost after 15 s without a sort
+};
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* =====================================================================
+   2. WASTE CATEGORIES — each one has a gemstone colour, a line icon and
+      science facts. `years` only drives the decomposition bar (log scale).
+   ===================================================================== */
+const CATEGORIES = {
+  plastic: {
+    id:'plastic', name:'Plastic', short:'Plastic', color:'#7fb0ff',
+    icon:'<path d="M13 3h6v3l2 3v17a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2V9l2-3z"/><path d="M11 14h10M11 20h10"/>',
+    decompText:'can persist for centuries', years:450,
+    facts:[
+      'Plastic packaging can persist for hundreds of years and fragment into microplastics rather than fully disappearing.',
+      'PET, HDPE, PVC, LDPE, PP, PS and other plastics behave differently. Shape alone cannot reliably reveal the polymer.',
+      'Clean, correctly sorted plastic can become new packaging, fibres, boards or other products when local facilities accept it.'
+    ],
+    tip:'Look for a resin code (1–7) and check local rules. Empty and rinse containers; keep film and foam separate if your area requires it.'
+  },
+  metal: {
+    id:'metal', name:'Metal', short:'Metal', color:'#d5dbe6',
+    icon:'<ellipse cx="16" cy="8" rx="7" ry="2.5"/><path d="M9 8v16c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V8"/><path d="M9 15c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
+    decompText:'decades to centuries, depending on metal', years:150,
+    facts:[
+      'Aluminium recycling uses much less energy than making aluminium from ore, and aluminium can be recycled repeatedly.',
+      'Steel and aluminium look similar in some photos. A magnet can help distinguish many steel items from aluminium.',
+      'Metal cans, lids and clean scrap may be accepted by local recycling services; pressurised or chemical cans need special care.'
+    ],
+    tip:'Empty and rinse ordinary food or drink cans. Do not place pressurised aerosol cans or chemical containers in ordinary recycling unless local guidance says to.'
+  },
+  paper: {
+    id:'paper', name:'Paper & Cardboard', short:'Paper', color:'#f0c75e',
+    icon:'<path d="M9 4h10l5 5v19H9z"/><path d="M19 4v5h5M12 15h9M12 19h9M12 23h6"/>',
+    decompText:'weeks to months in suitable conditions', years:0.12,
+    facts:[
+      'Paper fibres can usually be recycled only a limited number of times before they become too short to reuse.',
+      'Keeping paper dry and clean protects the fibres that recycling facilities need.',
+      'Greasy or food-soiled paper and coated cartons may need a different route from clean cardboard.'
+    ],
+    tip:'Flatten clean boxes and keep paper dry. Check separately for waxed, coated, laminated or greasy packaging.'
+  },
+  organic: {
+    id:'organic', name:'Organic / Compost', short:'Organic', color:'#62e8a8',
+    icon:'<path d="M6 26C6 14 13 6 26 6c0 13-7 20-18 20"/><path d="M6 26 18 14"/>',
+    decompText:'weeks to months in suitable compost', years:0.09,
+    facts:[
+      'Fruit and vegetable scraps can become compost when moisture, air and microorganisms are present.',
+      'Food waste in a landfill can break down without much oxygen and release methane.',
+      'Not every food-looking object is compostable: wrappers, stickers, plastic nets and coated containers need to be removed.'
+    ],
+    tip:'Compost fruit and vegetable scraps only where accepted. Remove stickers, plastic nets and packaging first.'
+  },
+  glass: {
+    id:'glass', name:'Glass', short:'Glass', color:'#72d9ee',
+    icon:'<path d="M11 4h10l-1 6-2 3v11l3 3H11l3-3V13l-2-3z"/><path d="M13 8h6M13 20h6"/>',
+    decompText:'may persist for thousands of years', years:100000,
+    facts:[
+      'Glass does not biodegrade like food; broken pieces can remain in the environment for a very long time.',
+      'Many glass bottles and jars can be recycled, but glass types such as cookware, mirrors and window glass may need separate handling.',
+      'Broken glass is a safety hazard. Keep it out of loose recycling unless your local service provides safe instructions.'
+    ],
+    tip:'Rinse bottles and jars. Do not assume mirrors, ceramics, drinking glasses or heat-resistant cookware belong with container glass.'
+  },
+  electronics: {
+    id:'electronics', name:'Electronics / E-waste', short:'E-waste', color:'#c7a6ff',
+    icon:'<rect x="4" y="6" width="24" height="16" rx="2"/><path d="M12 27h8M16 22v5M9 11h14M9 15h8"/>',
+    decompText:'varies widely; parts may persist for centuries', years:1000,
+    facts:[
+      'Electronics contain valuable metals and components that can be recovered through specialist recycling.',
+      'Phones, computers, chargers, cables and circuit boards should not usually go into ordinary household recycling bins.',
+      'Some devices contain batteries, so damage or crushing can cause fire or chemical risks.'
+    ],
+    tip:'Use an authorised e-waste drop-off or take-back scheme. Remove personal data from devices before handing them in.'
+  },
+  wood: {
+    id:'wood', name:'Wood', short:'Wood', color:'#d4a373',
+    icon:'<path d="M6 9 23 4l3 5-17 5z"/><path d="M9 14v13M15 12v15M22 10v17"/>',
+    decompText:'months to decades; treatment matters', years:10,
+    facts:[
+      'Clean untreated wood may be reused, repaired, chipped or composted only where local facilities allow.',
+      'Painted, pressure-treated, glued or engineered wood can require specialist handling.',
+      'Reusing timber often preserves more value than immediately breaking it down.'
+    ],
+    tip:'Reuse good timber. Keep painted, treated, laminated and engineered wood separate and follow local disposal instructions.'
+  },
+  hazardous: {
+    id:'hazardous', name:'Batteries & Special Waste', short:'Special', color:'#ffb36a',
+    icon:'<rect x="7" y="9" width="18" height="19" rx="2"/><path d="M12 5h8v4M16 13v7M12.5 16.5h7"/>',
+    decompText:'hazards can persist for decades or longer', years:1000,
+    facts:[
+      'Batteries can contain reactive chemicals and should be kept away from heat, crushing and ordinary loose rubbish.',
+      'Bulbs, paint, aerosols, medicines and household chemicals can require different specialist collection routes.',
+      'A swollen, leaking or damaged battery should not be placed in a regular recycling bin.'
+    ],
+    tip:'Use a dedicated battery or hazardous-waste collection point. Tape battery terminals if your local collection instructions recommend it; never burn or open batteries.'
+  },
+  textile: {
+    id:'textile', name:'Textiles & Clothing', short:'Textile', color:'#f19ad7',
+    icon:'<path d="M11 4 16 7l5-3 6 5-4 6-3-2v14H12V13l-3 2-4-6z"/><path d="M13 27V16M19 27V16"/>',
+    decompText:'varies from months to centuries by fibre', years:200,
+    facts:[
+      'Natural fibres and synthetic fibres behave differently, and blended fabrics can be difficult to recycle.',
+      'Repairing, reselling and donating usable clothes can extend their life before recycling is needed.',
+      'Shoes, stuffed toys, carpets and mixed-fibre fabrics may need separate collection programmes.'
+    ],
+    tip:'Donate clean, usable textiles. Keep wet or mouldy items separate and check whether shoes, carpets and stuffed toys are accepted.'
+  },
+  landfill: {
+    id:'landfill', name:'Residual / Mixed Waste', short:'Residual', color:'#ff7a8c',
+    icon:'<path d="M8 9h16M12 9V6h8v3M10 9l1 17h10l1-17M14 14v8M18 14v8"/>',
+    decompText:'decades to 1,000+ years, item dependent', years:1000,
+    facts:[
+      'Mixed-material wrappers can combine plastic, foil, paper and adhesives that are difficult to separate.',
+      'When an item cannot be reused or accepted by a recycling service, it may need the residual-waste route.',
+      'The best order is to reduce waste, reuse or repair items, and then recycle materials that local facilities accept.'
+    ],
+    tip:'Before using the residual bin, check whether the item can be repaired, donated, returned, or taken to a specialist collection point.'
+  }
+};
+const svgIcon = cat => '<svg viewBox="0 0 32 32" aria-hidden="true">' + cat.icon + '</svg>';
+
+// Shown in the Field notes before anything is detected
+const GENERAL_FACTS = [
+  'The world produces over 2 billion tonnes of city waste every year (World Bank). Sorting it correctly is one of the easiest ways to help.',
+  'The average person in the world creates about 0.74 kg of waste every day (World Bank). Wealthy countries create much more.',
+  'Recycling saves energy, protects wildlife and reduces the amount of waste that is buried or burned.'
+];
+const GLASS_NOTE = 'Glass is shown in its own stream. Container glass, mirrors, ceramics, cookware and broken glass may require different handling.';
+
+/* =====================================================================
+   3. THE SMART MAPPING DICTIONARY
+      MobileNet knows 1,000 ImageNet object classes, not recycling rules. An expanded keyword dictionary maps its names to suggested waste streams.
+      Each list is compiled into ONE regular expression for fast matching.
+      Important: visual appearance is not proof of polymer type or material composition.
+   ===================================================================== */
+const KEYWORDS = {
+  // Visual false positives/background objects that should not trigger sorting.
+  ignore:['web site','ashcan','wastebin','desk','studio couch','window shade','window screen',
+    'necklace','library','bookshop','dining table',
+    'cleaver','letter opener','hook','lipstick','lip rouge','face powder','band aid','nipple','hand blower',
+    'ocarina','harmonica','bow tie','maillot','bikini','brassiere','swimming trunks','sarong','miniskirt',
+    'oxygen mask','gasmask','ski mask','mask','stethoscope','neck brace'],
+  hazardous:['battery','batteries','lithium battery','lithium-ion battery','rechargeable battery','alkaline battery',
+    'button cell','coin cell','car battery','lead acid battery','battery pack','light bulb','lightbulb',
+    'fluorescent lamp','cfl bulb','led bulb','aerosol','spray can','paint can','paint tin','motor oil',
+    'chemical container','pesticide','weed killer','solvent','medicine','medication','syringe','thermometer'],
+  electronics:['laptop','notebook computer','desktop computer','monitor','computer screen','television','tv set',
+    'home theater','computer mouse','computer keyboard','space bar','cellular telephone','mobile phone','smartphone',
+    'tablet computer','ipod','remote control','modem','speaker','microphone','projector','printer','refrigerator',
+    'hair dryer','electric fan','camera','digital camera','video game console','game controller','headphones',
+    'earphones','charger','power adapter','usb cable','electrical cable','circuit board','computer component',
+    'hard drive','flash drive','memory card','router','wifi router','keyboard','monitor','laptop computer'],
+  organic:['banana','banana peel','apple','granny smith','orange','lemon','lime','grapefruit','strawberry','raspberry',
+    'blueberry','blackberry','cherry','peach','pear','plum','mango','papaya','pineapple','watermelon','melon',
+    'cantaloupe','cucumber','avocado','pomegranate','fig','jackfruit','custard apple','grapes','kiwi','coconut',
+    'corn','acorn','acorn squash','butternut squash','spaghetti squash','zucchini','pumpkin','carrot','potato',
+    'sweet potato','onion','garlic','bell pepper','capsicum','mushroom','agaric','bolete','broccoli','cauliflower',
+    'head cabbage','lettuce','spinach','artichoke','cardoon','celery','eggplant','aubergine','pea','bean','bread',
+    'bagel','pretzel','french loaf','hotdog','cheeseburger','pizza','burrito','guacamole','meat loaf','ice cream',
+    'mashed potato','carbonara','potpie','dough','hay','food scraps','fruit scraps','vegetable scraps','eggshell'],
+  paper:['envelope','carton','paper towel','toilet tissue','toilet paper','book jacket','comic book','menu','crossword',
+    'binder','jigsaw puzzle','pencil box','newspaper','notebook','paper','tissue','cardboard','cardboard box',
+    'corrugated cardboard','book','magazine','catalog','catalogue','paper bag','paperboard','egg carton','cereal box',
+    'shoebox','mail','letter','document','paper cup'],
+  glass:['glass bottle','beer bottle','wine bottle','glass jar','mason jar','beer glass','goblet','red wine','wine glass',
+    'cocktail glass','drinking glass','vase','windowpane','window glass','glassware','broken glass','glass shard',
+    'glass container','jam jar','pickle jar'],
+  wood:['wooden spoon','wooden bowl','wooden toy','wood plank','wooden plank','lumber','timber','plywood','wood board',
+    'wooden furniture','wooden chair','wooden table','wooden ruler','wooden stick','firewood','log','branch','twig',
+    'tree branch','bamboo','wood chips','sawdust','wooden crate','wooden box','wooden cutting board','wooden handle'],
+  metal:['milk can','tin can','aluminium can','aluminum can','soda can','drink can','beverage can','tin','metal can',
+    'can opener','tin opener','frying pan','wok','caldron','ladle','strainer','cocktail shaker','padlock','chain',
+    'nail','screw','safety pin','hammer','corkscrew','bolt','spatula','metal lid','metal foil','aluminum foil',
+    'aluminium foil','steel can','scrap metal','metal pot','metal utensil','metal pipe','wire','metal bottle cap'],
+  plastic:['water bottle','pop bottle','soda bottle','plastic bottle','pet bottle','plastic jug','water jug','plastic bag',
+    'plastic bucket','plastic pail','plastic toy','toy brick','building block','lego brick','plastic doll','plastic action figure',
+    'soap dispenser','lotion bottle','shampoo bottle','detergent bottle','sunscreen bottle','sunblock bottle','hair spray bottle',
+    'plastic measuring cup','frisbee','shower cap','plastic cup','plastic container','food container','takeaway container',
+    'plastic tub','yogurt pot','yoghurt pot','plastic tray','plastic lid','bottlecap','bottle cap','plastic packaging',
+    'plastic wrapper','plastic film','plastic wrap','cling film','plastic bag','polystyrene','styrofoam','foam tray',
+    'foam cup','eps foam','pvc pipe','plastic pipe','plastic cutlery','plastic fork','plastic spoon','plastic plate',
+    'plastic crate','plastic bucket','plastic furniture','plastic hanger','plastic comb','toothbrush','plastic casing'],
+  textile:['sock','running shoe','sandal','loafer','clog','shoe','sneaker','boot','shirt','t-shirt','trousers','jeans',
+    'dress','coat','jacket','sweater','scarf','glove','hat','cap','towel','bath towel','dishrag','blanket','duvet',
+    'bedsheet','pillow','cushion','fabric','textile','carpet','rug','curtain','shower curtain','leather shoe','handbag','backpack',
+    'teddy bear','stuffed toy','plush toy','soft toy','cloth','clothing','sweatshirt','cardigan','jersey','t-shirt','suit',
+    'pajama','poncho','academic gown','lab coat','trench coat','military uniform','abaya','bonnet','wig'],
+  landfill:['sunglass','sunglasses','rubber eraser','ballpoint','fountain pen','lighter','diaper','sponge','crisp packet',
+    'chip bag','sweet wrapper','candy wrapper','laminated wrapper','mixed material wrapper','ceramic','pottery','porcelain',
+    'broken ceramic','mirror','heat-resistant glass','pyrex','cigarette butt','used tissue','dirty napkin']
+};
+
+// helper: escape special regex characters in a keyword
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// compile every keyword list into one regex with word boundaries (\b),
+// so "pot" would never match inside "potpie".
+const RX = {};
+for (const key in KEYWORDS) RX[key] = new RegExp('\\b(?:' + KEYWORDS[key].map(esc).join('|') + ')\\b', 'i');
+
+/** Turn one MobileNet class name ("pop bottle, soda bottle") into a waste category.
+ *  Returns {ignore:true}, {cat, note?}, or null when we have no rule for it. */
+function mapLabelToCategory(className) {
+  const label = String(className || '').toLowerCase();
+  if (RX.ignore.test(label)) return { ignore: true };
+  // Specific and safety-sensitive categories come before broad material guesses.
+  const priority = ['hazardous','electronics','organic','paper','glass','wood','metal','plastic','textile','landfill'];
+  for (const id of priority) {
+    if (RX[id] && RX[id].test(label)) {
+      const details = inferObjectDetails(label, id);
+      const note = (id === 'glass') ? 'Glass is its own stream. Broken glass, mirrors, ceramics and cookware may need different handling.' :
+        (id === 'electronics') ? 'Use an authorised e-waste collection point; electronics may contain batteries and valuable recoverable materials.' :
+        (id === 'hazardous') ? 'Special handling required. Never put batteries, chemicals or pressurised items in ordinary recycling unless local rules explicitly allow it.' : null;
+      return { cat: CATEGORIES[id], note, ...details };
+    }
+  }
+  // Do not send unrecognised objects to a confident category just because they are visible.
+  return null;
+}
+
+function inferObjectDetails(label, categoryId) {
+  const rules = [
+    [/banana|fruit peel|apple core|food scrap|vegetable scrap|eggshell|grape|orange|lemon|mango|pineapple|watermelon|cucumber|carrot|potato|broccoli|lettuce|mushroom/, 'Food or plant waste', 'Organic matter', 'Compost only where local services accept it; remove stickers and packaging.'],
+    [/laptop|notebook computer|desktop computer|computer|cellular telephone|mobile phone|smartphone|tablet|monitor|television|tv set|router|charger|usb cable|electrical cable|circuit board|hard drive|flash drive|memory card|game controller|video game console|camera|headphones|speaker|printer|modem/, 'Electronic device / component', 'Mixed electronic materials', 'Use an authorised e-waste or take-back point; check for a removable battery.'],
+    [/battery|button cell|coin cell|lithium|alkaline|lead acid|aerosol|paint can|paint tin|motor oil|chemical container|pesticide|solvent|fluorescent|cfl bulb|light bulb|syringe|thermometer/, 'Battery or special-care item', 'Potentially hazardous components', 'Use a dedicated collection point and follow local safety instructions.'],
+    [/aluminium|aluminum|soda can|drink can|beverage can|steel can|tin can|metal can|metal lid|metal foil|metal pot|metal utensil|scrap metal|metal pipe|wire|nail|screw|bolt|padlock|chain/, 'Metal item / packaging', 'Metal likely; exact alloy unknown', 'Empty and rinse ordinary containers. Special containers and sharp scrap need separate handling.'],
+    [/glass|goblet|wine glass|drinking glass|mason jar|jam jar|pickle jar|vase|windowpane/, 'Glass item', 'Glass likely; exact glass type unknown', 'Container glass may be recyclable; mirrors, ceramics, cookware and broken glass can have separate rules.'],
+    [/wood|wooden|lumber|timber|plywood|sawdust|firewood|log|branch|twig|bamboo/, 'Wood or plant-fibre item', 'Wood likely; treatment unknown', 'Reuse clean timber. Painted, treated, glued or engineered wood may need special handling.'],
+    [/plastic toy|toy brick|lego|building block|plastic doll|action figure|plastic casing/, 'Plastic toy or rigid object', 'Plastic likely; polymer type unverified', 'Check markings or manufacturer details; toys may contain mixed plastics, metal or electronics.'],
+    [/pet bottle|water bottle|pop bottle|soda bottle|plastic bottle|shampoo bottle|detergent bottle|lotion bottle|sunscreen bottle/, 'Bottle / container', 'Plastic possible; resin code needed', 'Check the container for a resin code and local acceptance rules; the image cannot guarantee PET or HDPE.'],
+    [/plastic bag|cling film|plastic film|plastic wrap|wrapper|polystyrene|styrofoam|foam tray|foam cup|eps foam/, 'Film or foam packaging', 'Likely plastic; polymer unverified', 'Film and foam often need separate drop-off and may not be accepted in curbside recycling.'],
+    [/paper|cardboard|newspaper|magazine|book|envelope|paperboard|corrugated|egg carton|shoebox|paper bag/, 'Paper / fibre item', 'Paper or cardboard likely', 'Keep dry and clean; greasy, laminated or coated materials may not be accepted.'],
+    [/sock|shoe|sneaker|boot|shirt|dress|trousers|jeans|sweater|scarf|glove|hat|towel|blanket|bedsheet|fabric|textile|carpet|rug|teddy bear|stuffed toy|plush toy|soft toy|clothing/, 'Clothing, fabric or soft item', 'Textile blend unknown', 'Donate usable items or use a textile collection; keep wet or mouldy items separate.']
+  ];
+  for (const [rx, item, material, guidance] of rules) {
+    if (rx.test(label)) return { item, material, guidance, detail: material + ' — ' + guidance };
+  }
+  const defaults = {
+    plastic:['Plastic-looking object','Possible plastic; type unverified','Check the resin code or manufacturer label; do not infer polymer type from colour or shape.'],
+    metal:['Metal-looking object','Metal likely; alloy unknown','Check local rules; cans, scrap metal and pressurised containers may use different collection routes.'],
+    paper:['Paper-like object','Paper fibre likely','Keep dry and clean; check coatings and food contamination.'],
+    organic:['Food or plant item','Organic matter likely','Compost only where accepted and remove non-organic packaging.'],
+    glass:['Glass-looking object','Glass type unverified','Check whether it is container glass, mirror, ceramic or heat-resistant cookware.'],
+    electronics:['Electronic-looking item','Mixed electronic materials','Use an authorised e-waste route.'],
+    wood:['Wood-looking item','Treatment unknown','Reuse where possible; treated or engineered wood may need special handling.'],
+    hazardous:['Special-care item','Hazard cannot be assessed visually','Keep separate and follow local hazardous-waste instructions.'],
+    textile:['Textile-like item','Fibre blend unknown','Reuse, donate or use a dedicated textile service.'],
+    landfill:['Mixed or unknown object','Material not confirmed','Do not treat this suggestion as a final material identification; check markings and local rules.']
+  };
+  const d = defaults[categoryId] || ['Object','Material unknown','Verify the item before disposal.'];
+  return { item: d[0], material: d[1], guidance: d[2], detail: d[1] + ' — ' + d[2] };
+}
+
+// "pop bottle, soda bottle" -> "Pop Bottle"
+const prettyName = n => n.split(',')[0].trim().replace(/\b\w/g, c => c.toUpperCase());
+
+/** Combine MobileNet guesses by suggested waste stream.
+ *  The score is a model score, not a guarantee of material composition. */
+function interpretPredictions(preds) {
+  const tally = {};
+  for (const p of preds) {
+    const m = mapLabelToCategory(p.className);
+    if (!m || m.ignore) continue;
+    const t = tally[m.cat.id] || (tally[m.cat.id] = { score: 0, topProb: 0, label: '', note: null, item: '', material: '', guidance: '', detail: '' });
+    t.score += p.probability;
+    if (p.probability > t.topProb) {          // remember the strongest guess for the display name
+      t.topProb = p.probability;
+      t.label = prettyName(p.className);
+      t.note = m.note || null; t.item = m.item || ''; t.material = m.material || ''; t.guidance = m.guidance || ''; t.detail = m.detail || ''; 
+    }
+  }
+  let bestId = null, bestScore = 0;
+  for (const id in tally) if (tally[id].score > bestScore) { bestScore = tally[id].score; bestId = id; }
+
+  if (bestId && bestScore >= CONFIG.MIN_CATEGORY_SCORE) {
+    const t = tally[bestId];
+    return { cat: CATEGORIES[bestId], label: t.label, confidence: Math.min(1, bestScore), note: t.note, item: t.item, material: t.material, guidance: t.guidance, detail: t.detail };
+  }
+  // Fallback: the AI is quite sure about an object we have no rule for -> Non-Recyclable
+  const top = preds[0];
+  if (top && top.probability >= CONFIG.FALLBACK_LANDFILL_SCORE && mapLabelToCategory(top.className) === null) {
+    return { cat: CATEGORIES.landfill, label: prettyName(top.className), confidence: top.probability, note: null, item: 'Unmapped object', material: 'Material not confirmed', guidance: 'This is a cautious residual-waste suggestion, not proof that the item cannot be recycled.', detail: 'Material not confirmed — check product markings or local recycling guidance.' };
+  }
+  return null;     // nothing useful in view
+}
+
+/* =====================================================================
+   4. GAME STATE
+   ===================================================================== */
+const game = {
+  score: 0, streak: 0, multiplier: 1, sorted: 0,
+  counts: Object.fromEntries(Object.keys(CATEGORIES).map(id => [id, 0])),
+  current: null,        // latest smoothed detection {cat,label,confidence,note}
+  lastSeen: 0,          // when it was last confirmed
+  active: false,        // is an item currently being tracked?
+  running: false,       // is the camera (or test mode) feeding frames?
+  holdCat: null, holdStart: 0, progress: 0,
+  locked: false, lockedCat: null,   // after a sort, the item must leave before it can score again
+  lastSort: 0,
+  lastClassify: 0, busy: false,
+  simUntil: 0, simCat: null         // test-mode simulation
+};
+const history = [];     // last few raw detections, used for voting
+let model = null, soundOn = true;
+let deepClassifier = null, deepClassifierPromise = null, deepRawImage = null;
+let latestDeepMatch = null, deepOverride = null;
+
+/* =====================================================================
+   5. DOM HELPERS
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const el = {
+  video:$('#video'), overlay:$('#overlay'), stage:$('#stage'), banner:$('#banner'), placeholder:$('#placeholder'),
+  camError:$('#camError'), cpTitle:$('#cpTitle'), cpSteps:$('#cpSteps'), chip:$('#chip'), chipText:$('#chipText'),
+  score:$('#score'), streak:$('#streak'), mult:$('#mult'), sorted:$('#sorted'),
+  objName:$('#objName'), catBadge:$('#catBadge'), materialLine:$('#materialLine'), confText:$('#confText'), confBar:$('#confBar'),
+  holdText:$('#holdText'), holdBar:$('#holdBar'), rawList:$('#rawList'), bins:$('#bins'), testRow:$('#testRow'),
+  science:$('#science'), sciIcon:$('#sciIcon'), sciTitle:$('#sciTitle'), sciSub:$('#sciSub'), sciYears:$('#sciYears'),
+  sciBar:$('#sciBar'), sciFact:$('#sciFact'), sciTip:$('#sciTip'), sciNote:$('#sciNote'), sciNoteText:$('#sciNoteText'),
+  startBtn:$('#startBtn'), startBtn2:$('#startBtn2'), flipBtn:$('#flipBtn')
+};
+const setText = (node, txt) => { if (node.textContent !== txt) node.textContent = txt; };
+function popAnim(node) { node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop'); }
+
+function toast(msg, bad) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (bad ? ' bad' : '');
+  t.textContent = msg;
+  $('#toasts').appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+function setChip(state, text) { el.chip.className = 'chip ' + state; el.chipText.textContent = text; }
+
+/* Build the 5 arched bins and the sample-item buttons from the CATEGORIES data */
+Object.values(CATEGORIES).forEach(cat => {
+  const d = document.createElement('div');
+  d.className = 'bin'; d.dataset.cat = cat.id; d.style.setProperty('--c', cat.color);
+  d.innerHTML = '<div class="ico">' + svgIcon(cat) + '</div><div class="bn">' + cat.short +
+                '</div><div class="bc" id="count-' + cat.id + '">0</div>';
+  el.bins.appendChild(d);
+
+  const b = document.createElement('button');
+  b.className = 'btn'; b.style.setProperty('--c', cat.color); b.textContent = cat.short;
+  b.addEventListener('click', () => { unlockAudio(); startSim(cat.id); });
+  el.testRow.appendChild(b);
+});
+{ // extra sample: a hand, to show the guard refusing it
+  const b = document.createElement('button');
+  b.className = 'btn'; b.style.setProperty('--c', '#e3c98f'); b.textContent = 'Hand (should be ignored)';
+  b.addEventListener('click', () => { unlockAudio(); startSim('hand'); });
+  el.testRow.appendChild(b);
+}
+const binEl = id => el.bins.querySelector('[data-cat="' + id + '"]');
+
+/* =====================================================================
+   6. SOUND  (tiny synthesized chimes, no audio files needed)
+   ===================================================================== */
+let audioCtx = null;
+function unlockAudio() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+}
+function chime(freqs) {
+  if (!soundOn || !audioCtx) return;
+  freqs.forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + i * 0.11;
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.55);
+  });
+}
+addEventListener('pointerdown', unlockAudio, { once: true });   // browsers need a click before sound is allowed
+
+/* =====================================================================
+   7. CAMERA ACCESS
+      The browser ALWAYS shows its own "Allow camera?" popup. A web page
+      cannot skip it (that is a safety rule). So we:
+        - ask for permission as soon as the page opens,
+        - start automatically if permission was already granted,
+        - explain exactly how to fix it if it was blocked,
+        - start by itself the moment the user flips it to "Allow".
+   ===================================================================== */
+let starting = false, devices = [], devIndex = 0, currentDeviceId = null;
+
+function stopStream() {
+  const s = el.video.srcObject;
+  if (s) s.getTracks().forEach(t => t.stop());
+  el.video.srcObject = null;
+}
+
+/** Ask the browser for the webcam. Tries nice settings first, then the simplest request. */
+async function openCamera() {
+  stopStream();
+  const base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  const attempts = [
+    { video: currentDeviceId ? { ...base, deviceId: { exact: currentDeviceId } } : { ...base, facingMode: 'user' }, audio: false },
+    { video: true, audio: false }
+  ];
+  let lastErr = null, stream = null;
+  for (const c of attempts) {
+    try { stream = await navigator.mediaDevices.getUserMedia(c); break; }
+    catch (e) {
+      lastErr = e;
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.name === 'SecurityError') break; // retrying won't help
+    }
+  }
+  if (!stream) throw lastErr;
+
+  el.video.srcObject = stream;
+  await el.video.play();
+
+  // Selfie cameras are mirrored; a back camera should not be
+  const track = stream.getVideoTracks()[0], st = track.getSettings ? track.getSettings() : {};
+  const isBack = st.facingMode === 'environment' || /back|rear|environment/i.test(track.label || '');
+  el.video.classList.toggle('nomirror', isBack);
+
+  // now that permission is granted, device names are available -> offer "Switch camera"
+  try {
+    devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const i = devices.findIndex(d => d.deviceId === st.deviceId);
+    devIndex = i >= 0 ? i : 0;
+    el.flipBtn.hidden = devices.length < 2;
+  } catch (e) {}
+
+  el.placeholder.classList.add('hidden');
+  el.startBtn.hidden = true;
+}
+
+function setBusy(b) {
+  el.startBtn.disabled = el.startBtn2.disabled = b;
+}
+
+/** Friendly, specific help for every way the camera can fail. */
+function showCameraProblem(err) {
+  let title = 'The camera could not start', steps = ['Try again, or use a sample item below to test the app.'];
+  switch (err && err.name) {
+    case 'NotAllowedError': case 'PermissionDeniedError':
+      title = 'Camera access is blocked';
+      steps = ['Click the camera icon at the right end of your browser\'s address bar (or the icon at the left).',
+               'Set Camera to Allow.',
+               'The app starts on its own, or press Try again.']; break;
+    case 'NotFoundError': case 'DevicesNotFoundError':
+      title = 'No camera found';
+      steps = ['Plug in a webcam or check that it is switched on.', 'Press Try again.']; break;
+    case 'NotReadableError': case 'TrackStartError':
+      title = 'The camera is busy';
+      steps = ['Close other apps or tabs using the camera (Zoom, Teams, another browser tab).', 'Press Try again.']; break;
+    case 'NoMediaDevices': case 'SecurityError':
+      title = 'This page cannot reach the camera';
+      steps = ['Open the page from http://localhost or an https:// address instead of a plain file.',
+               'Tip: run  python -m http.server 8000  in the folder, then open http://localhost:8000'];
+      break;
+  }
+  el.cpTitle.textContent = title;
+  el.cpSteps.replaceChildren(...steps.map(s => { const li = document.createElement('li'); li.textContent = s; return li; }));
+  el.camError.hidden = false;
+  el.placeholder.classList.remove('hidden');
+  el.startBtn2.textContent = 'Try again';
+  el.startBtn.textContent = 'Try again'; el.startBtn.hidden = false;
+  setChip('error', 'Camera off');
+}
+
+const readyText = () => 'AI ready · MobileNetV2' + (bodyDet.ready ? ' + hand guard' : '');
+
+async function ensureModel() {
+  if (model) { setChip('ready', readyText()); return; }
+  setChip('loading', 'Loading the AI model…');
+  try {
+    if (typeof mobilenet === 'undefined') throw new Error('MobileNet library did not load (check your internet).');
+    const bodyLoad = loadBodyDetector();      // the hand + face finder downloads at the same time
+    model = await mobilenet.load({ version: 2, alpha: 1.0 });
+    await model.classify(el.video, 1);        // warm-up run so the first real prediction is fast
+    await bodyLoad;
+    setChip('ready', readyText());
+    if (bodyDet.ready) toast('Ready. Hold an item inside the ring.');
+    else toast('Hand finder did not load. Using the skin-colour check instead.', true);
+  } catch (err) {
+    console.error(err);
+    setChip('error', 'AI model failed to load');
+    toast('The AI model failed to load. Check your internet and reload.', true);
+  }
+}
+
+async function startCamera() {
+  if (starting) return;
+  starting = true; setBusy(true); el.camError.hidden = true;
+  setChip('loading', 'Waiting for camera permission…');
+  try { await openCamera(); }
+  catch (err) { showCameraProblem(err); starting = false; setBusy(false); return; }
+  await ensureModel();
+  starting = false; setBusy(false);
+}
+
+async function switchCamera() {
+  if (devices.length < 2 || starting) return;
+  starting = true;
+  devIndex = (devIndex + 1) % devices.length;
+  currentDeviceId = devices[devIndex].deviceId;
+  try { await openCamera(); } catch (err) { showCameraProblem(err); }
+  starting = false;
+}
+
+/* =====================================================================
+   8. SAMPLE ITEMS — feed a fake "AI answer" into the SAME pipeline.
+      A reliable backup if the camera or lighting misbehaves on stage.
+   ===================================================================== */
+const SIM = {
+  plastic:[['water bottle',.62],['pop bottle, soda bottle',.2],['water jug',.05]],
+  metal:[['milk can',.5],['can opener, tin opener',.2],['cocktail shaker',.06]],
+  paper:[['envelope',.6],['paper bag',.12],['book jacket, dust cover',.05]],
+  organic:[['banana',.8],['orange',.05],['lemon',.03]],
+  glass:[['glass jar',.7],['vase',.12],['beer glass',.06]],
+  electronics:[['cellular telephone',.7],['computer keyboard',.12],['remote control',.06]],
+  wood:[['wooden spoon',.6],['wooden bowl',.18],['wood plank',.08]],
+  hazardous:[['lithium battery',.72],['light bulb',.12],['aerosol',.08]],
+  textile:[['teddy bear',.62],['running shoe',.18],['bath towel',.08]],
+  landfill:[['crisp packet',.65],['rubber eraser',.12],['lighter',.08]],
+  hand:[['water bottle',.32],['pop bottle, soda bottle',.1],['paintbrush',.08]]
+};
+const SIM_BODY = { hand: { hand: .55, face: 0, skin: .5 } };   // pretend the hand detector saw a big hand
+function startSim(catId) {
+  game.simCat = catId;
+  game.simUntil = performance.now() + CONFIG.HOLD_MS + 1600;
+  game.locked = false;
+  history.length = 0;
+  if (!el.video.srcObject) el.placeholder.classList.add('hidden');
+}
+
+/* =====================================================================
+   8b. BODY GUARD — "is this a hand, a face, or a real item?"
+       WHY: MobileNet only knows 1,000 object types and none of them is
+       "hand" or "face". Shown a hand, it must still answer, so it names
+       the nearest object (a paintbrush, a cleaver...). Fix = 3 layers:
+         1. CROP     the AI only sees the square around the ring, so a face
+                     in the background is not part of its picture.
+         2. DETECT   MediaPipe's hand + face finders measure how much of that
+                     square a hand/face covers. A skin-colour check is the
+                     backup (e.g. a close-up mouth where no face is visible).
+         3. GATE     when a hand/face fills the ring, the item guess must be
+                     MORE confident than usual. A weak guess becomes "Hand".
+       Holding a bottle in your hand still works, because the AI is very
+       sure about the bottle, so it passes the stricter gate.
+   ===================================================================== */
+const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const MP_MODELS = {
+  hand: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task',
+  face: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite'
+};
+const bodyDet = { hand: null, face: null, ready: false, ts: 0 };
+el.bodyLine = $('#bodyLine');
+
+/** Load the hand + face finders. If anything fails the app still works
+ *  (crop + skin check + stricter rules), it is just a little less clever. */
+async function loadBodyDetector() {
+  try {
+    const vision = await import(MP_BASE + '/vision_bundle.mjs');
+    const files = await vision.FilesetResolver.forVisionTasks(MP_BASE + '/wasm');
+    const make = async (Cls, path, extra) => {
+      for (const delegate of ['GPU', 'CPU']) {            // GPU is faster; fall back to CPU if it is not allowed
+        try {
+          return await Cls.createFromOptions(files, Object.assign({ baseOptions: { modelAssetPath: path, delegate }, runningMode: 'VIDEO' }, extra));
+        } catch (e) { console.warn('MediaPipe ' + delegate + ' failed', e); }
+      }
+      return null;
+    };
+    bodyDet.hand = await make(vision.HandLandmarker, MP_MODELS.hand, { numHands: 2 });
+    bodyDet.face = await make(vision.FaceDetector, MP_MODELS.face, {});
+    bodyDet.ready = !!(bodyDet.hand || bodyDet.face);
+  } catch (e) {
+    console.warn('Hand/face detector unavailable', e);
+    bodyDet.ready = false;
+  }
+}
+
+/** Where the ring sits on the stage. The overlay AND the crop both use this,
+ *  so "what you see inside the ring" is exactly "what the AI sees". */
+function ringGeo(w, h) { return { cx: w / 2, cy: h * 0.47, R: Math.min(w, h) * 0.34 }; }
+
+const cropCanvas = document.createElement('canvas');
+cropCanvas.width = cropCanvas.height = 224;                 // MobileNet's native input size
+const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+
+/** Copy the square around the ring from the video into cropCanvas.
+ *  The video is shown with object-fit:cover, so we convert ring coordinates
+ *  (screen pixels) back into video pixels first. Returns the square in video pixels. */
+function grabCrop() {
+  const v = el.video, vw = v.videoWidth, vh = v.videoHeight, w = el.stage.clientWidth, h = el.stage.clientHeight;
+  if (!vw || !vh || !w || !h) return null;
+  const g = ringGeo(w, h), scale = Math.max(w / vw, h / vh);
+  const offX = (w - vw * scale) / 2, offY = (h - vh * scale) / 2, half = g.R * CONFIG.CROP_FACTOR;
+  const ss = Math.min(2 * half / scale, vw, vh);
+  const sx = Math.min(Math.max((g.cx - half - offX) / scale, 0), vw - ss);
+  const sy = Math.min(Math.max((g.cy - half - offY) / scale, 0), vh - ss);
+  cropCtx.drawImage(v, sx, sy, ss, ss, 0, 0, 224, 224);
+  return { sx, sy, ss };
+}
+
+/** Share of the crop square that is skin-coloured (YCbCr rule, a classic computer-vision trick). */
+function skinFraction() {
+  const d = cropCtx.getImageData(0, 0, 224, 224).data;
+  let skin = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) {                  // every 4th pixel is plenty
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+    const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+    if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && r > g && r > b) skin++;
+    n++;
+  }
+  return skin / n;
+}
+
+/** How much of the crop square does a box (in video pixels) cover? 0 to 1 */
+function boxCover(b, crop) {
+  const x0 = Math.max(b.x0, crop.sx), y0 = Math.max(b.y0, crop.sy);
+  const x1 = Math.min(b.x1, crop.sx + crop.ss), y1 = Math.min(b.y1, crop.sy + crop.ss);
+  return (x1 > x0 && y1 > y0) ? ((x1 - x0) * (y1 - y0)) / (crop.ss * crop.ss) : 0;
+}
+const nextTs = () => (bodyDet.ts = Math.max(bodyDet.ts + 1, Math.round(performance.now())));  // MediaPipe wants rising timestamps
+
+/** Measure hand / face / skin coverage of the ring area. Each value is 0 to 1. */
+function measureBody(crop) {
+  const body = { hand: 0, face: 0, skin: 0 };
+  if (!crop) return body;
+  const vw = el.video.videoWidth, vh = el.video.videoHeight;
+  if (bodyDet.hand) {
+    try {
+      const res = bodyDet.hand.detectForVideo(el.video, nextTs());
+      for (const lm of (res.landmarks || [])) {               // 21 landmark points per hand -> bounding box
+        let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+        for (const p of lm) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+        const px = (x1 - x0) * 0.15, py = (y1 - y0) * 0.15;   // the points sit inside the outline, so pad a little
+        body.hand = Math.max(body.hand, boxCover({ x0: (x0 - px) * vw, y0: (y0 - py) * vh, x1: (x1 + px) * vw, y1: (y1 + py) * vh }, crop));
+      }
+    } catch (e) { console.warn(e); }
+  }
+  if (bodyDet.face) {
+    try {
+      const res = bodyDet.face.detectForVideo(el.video, nextTs());
+      for (const d of (res.detections || [])) {
+        const b = d.boundingBox; if (!b) continue;
+        body.face = Math.max(body.face, boxCover({ x0: b.originX, y0: b.originY, x1: b.originX + b.width, y1: b.originY + b.height }, crop));
+      }
+    } catch (e) { console.warn(e); }
+  }
+  body.skin = skinFraction();
+  return body;
+}
+
+/** THE GATE. Returns {det} (keep the item) or {human} (it is a hand/face, refuse). */
+function bodyGate(det, body) {
+  const faceScore = Math.min(1, body.face * 2);                          // a face is never recyclable: count it double
+  const skinScore = (det && ['paper','wood'].includes(det.cat.id)) ? 0 : body.skin;     // cardboard is tan like skin, so skip the colour check for paper
+  const score = Math.max(body.hand, faceScore, skinScore);
+  if (score < CONFIG.BODY_LOW) return { det, human: null };              // nothing human in the ring
+  const need = score >= CONFIG.BODY_HIGH ? CONFIG.NEED_CONF_HIGH : CONFIG.NEED_CONF_LOW;
+  if (det && det.confidence >= need) return { det, human: null };        // very sure it is a real item (e.g. a bottle held in a hand)
+  const label = score === body.hand ? 'Hand' : (score === faceScore ? 'Face' : 'Hand or face');
+  return { det: null, human: { label, score, need } };
+}
+
+/* =====================================================================
+   9. PREDICTION PIPELINE
+      raw predictions -> category -> smoothing vote -> game state
+   ===================================================================== */
+function renderRaw(preds) {
+  while (el.rawList.children.length < preds.length) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="n"></span><span class="m"><div></div></span><span class="p"></span>';
+    el.rawList.appendChild(li);
+  }
+  preds.forEach((p, i) => {
+    const li = el.rawList.children[i];
+    li.querySelector('.n').textContent = prettyName(p.className);
+    li.querySelector('.m > div').style.width = (p.probability * 100).toFixed(0) + '%';
+    li.querySelector('.p').textContent = (p.probability * 100).toFixed(0) + '%';
+  });
+}
+
+function handlePredictions(preds, now, body) {
+  renderRaw(preds);
+  body = body || { hand: 0, face: 0, skin: 0 };
+  const pct = v => Math.round(v * 100) + '%';
+  el.bodyLine.textContent = 'Hand and face guard: hand ' + pct(body.hand) + ', face ' + pct(body.face) + ', skin ' + pct(body.skin) +
+    (bodyDet.ready ? '' : ' (hand finder off, using skin check only)');
+
+  const g = bodyGate(interpretPredictions(preds), body);   // 1) guess the item  2) ask the guard if it is really a hand/face
+  if (g.human) {                                           // a hand/face fills the ring: reset any running timer
+    game.bodyLabel = g.human.label; game.bodySeen = now;
+    history.length = 0; game.current = null; game.holdCat = null; game.progress = 0;
+  } else game.bodyLabel = null;
+  ingestDetection(g.det, now);
+}
+
+/** TEMPORAL SMOOTHING: keep the last 5 results and let them vote.
+ *  A category needs >= 2 votes, so a single wrong frame can't fool us. */
+function ingestDetection(det, now) {
+  history.push(det);
+  if (history.length > CONFIG.HISTORY_SIZE) history.shift();
+
+  const votes = {};
+  for (const h of history) if (h) votes[h.cat.id] = (votes[h.cat.id] || 0) + 1;
+  let winner = null, most = 0;
+  for (const id in votes) if (votes[id] > most) { most = votes[id]; winner = id; }
+
+  if (winner && most >= CONFIG.HISTORY_MIN_VOTES) {
+    for (let i = history.length - 1; i >= 0; i--) {          // use the newest reading of the winner
+      if (history[i] && history[i].cat.id === winner) { game.current = history[i]; break; }
+    }
+    game.lastSeen = now;
+  }
+}
+
+/* =====================================================================
+   10. THE "HOLD & SORT" ENGINE  (runs every animation frame)
+   ===================================================================== */
+function tickGame(now) {
+  // streak expires if the player is idle for too long
+  if (game.streak > 0 && now - game.lastSort > CONFIG.STREAK_TIMEOUT_MS) {
+    game.streak = 0; game.multiplier = 1; updateScoreboard(false);
+    toast('Streak lost. Sort another item to start a new one.', true);
+  }
+
+  const camOn = !!(el.video.srcObject && el.video.readyState >= 2);
+  game.running = camOn || now < game.simUntil || !!(deepOverride && now < deepOverride.until);
+
+  // is an item still being tracked? (GRACE_MS forgives short flickers)
+  game.active = !!game.current && (now - game.lastSeen <= CONFIG.GRACE_MS);
+
+  if (!game.active) {                      // nothing in view -> reset everything
+    game.current = null; game.holdCat = null; game.progress = 0; game.locked = false;
+    const bodyNow = (game.bodyLabel && now - game.bodySeen <= CONFIG.GRACE_MS) ? game.bodyLabel : null;
+    updateStatusUI(null, bodyNow);
+    setText(el.banner, !game.running ? 'Camera off' : bodyNow ? bodyNow + ' detected. Show an item' : 'Scanning');
+    return;
+  }
+
+  const det = game.current;
+  updateStatusUI(det);
+
+  // After a sort, ignore the same item until it leaves (prevents double scoring)
+  if (game.locked) {
+    if (det.cat.id !== game.lockedCat) game.locked = false;
+    else { game.progress = 0; setText(el.banner, 'Sorted. Remove the item'); setHold(0); return; }
+  }
+
+  // Start (or restart) the timer when the category changes
+  if (game.holdCat !== det.cat.id) { game.holdCat = det.cat.id; game.holdStart = now; }
+
+  game.progress = Math.min(1, (now - game.holdStart) / CONFIG.HOLD_MS);
+  setHold(game.progress);
+  setText(el.banner, 'Hold steady: ' + det.cat.name);
+
+  if (game.progress >= 1) registerSort(det, now);   // 2 seconds reached -> success!
+}
+
+function setHold(p) {
+  el.holdBar.style.width = (p * 100).toFixed(1) + '%';
+  setText(el.holdText, (p * CONFIG.HOLD_MS / 1000).toFixed(1) + ' of ' + (CONFIG.HOLD_MS / 1000).toFixed(1) + ' seconds');
+}
+
+/** A successful sort: update score, streak, multiplier and fire every effect. */
+function registerSort(det, now) {
+  game.streak += 1;
+  game.multiplier = Math.min(CONFIG.MAX_MULTIPLIER, 1 + Math.floor((game.streak - 1) / CONFIG.STREAK_PER_LEVEL));
+  const points = CONFIG.BASE_POINTS * game.multiplier;
+  game.score += points; game.sorted += 1; game.counts[det.cat.id] += 1;
+  game.lastSort = now;
+  game.locked = true; game.lockedCat = det.cat.id; game.holdCat = null; game.progress = 0;
+
+  updateScoreboard(true);
+  setText($('#count-' + det.cat.id), String(game.counts[det.cat.id]));
+
+  // visual + audio feedback
+  const bin = binEl(det.cat.id);
+  bin.classList.remove('sorted'); void bin.offsetWidth; bin.classList.add('sorted');
+  el.stage.style.setProperty('--c', det.cat.color);
+  el.stage.classList.remove('halo'); void el.stage.offsetWidth; el.stage.classList.add('halo');
+  floatScore('+' + points + (game.multiplier > 1 ? '  x' + game.multiplier : ''), det.cat.color);
+  const k = reduceMotion ? 0.25 : 1;
+  const r = bin.getBoundingClientRect();
+  burst(r.left + r.width / 2, r.top + r.height / 2, det.cat.color, Math.round(110 * k));
+  const w = el.stage.getBoundingClientRect();
+  burst(w.left + w.width / 2, w.top + w.height * 0.5, det.cat.color, Math.round(70 * k));
+  chime([784, 1047, 1568]);
+
+  showScience(det.cat, true);       // teach a fresh fact
+  toast(det.label + ' sorted into ' + det.cat.name + '. +' + points + ' points');
+}
+
+function updateScoreboard(animate) {
+  setText(el.score, String(game.score)); setText(el.streak, String(game.streak));
+  setText(el.mult, 'x' + game.multiplier); setText(el.sorted, String(game.sorted));
+  if (animate) { popAnim(el.score); popAnim(el.streak); popAnim(el.mult); popAnim(el.sorted); }
+}
+
+function floatScore(text, color) {
+  const d = document.createElement('div');
+  d.className = 'float-score'; d.textContent = text; d.style.setProperty('--c', color);
+  el.stage.appendChild(d);
+  d.addEventListener('animationend', () => d.remove());
+}
+
+/* =====================================================================
+   11. READING UI  (object name, category badge, confidence, bin glow)
+   ===================================================================== */
+let lastUIKey = '';
+function updateStatusUI(det, bodyLabel) {
+  const key = det ? det.cat.id + '|' + det.label + '|' + Math.round(det.confidence * 100) + '|' + (det.userConfirmed ? 'selected' : 'ai') : (bodyLabel ? 'body|' + bodyLabel : 'none');
+  if (key === lastUIKey) return;             // nothing changed -> skip DOM work
+  lastUIKey = key;
+
+  document.querySelectorAll('.bin').forEach(b => b.classList.toggle('active', !!det && b.dataset.cat === det.cat.id));
+
+  if (!det) {
+    setText(el.objName, bodyLabel || '—'); setText(el.catBadge, bodyLabel ? 'Not an item' : 'Waiting for an item');
+    setText(el.materialLine, bodyLabel ? 'Hold a single item in view, not a hand or face.' : 'Object and material details will appear here.');
+    el.catBadge.style.background = ''; el.catBadge.style.color = '';
+    setText(el.confText, '0%'); el.confBar.style.width = '0%'; setHold(0);
+    el.sciNote.hidden = true;
+    return;
+  }
+  const pct = Math.round(det.confidence * 100);
+  setText(el.objName, det.label);
+  setText(el.materialLine, det.detail || ((det.material || 'Material not confirmed') + (det.guidance ? ' — ' + det.guidance : '')));
+  if (det.userConfirmed) setText(el.confText, 'Selected');
+  setText(el.catBadge, det.cat.name);
+  el.catBadge.style.background = det.cat.color; el.catBadge.style.color = '#04140e';
+  if (!det.userConfirmed) setText(el.confText, pct + '%');
+  el.confBar.style.width = (det.userConfirmed ? 100 : pct) + '%';
+
+  if (sci.catId !== det.cat.id) showScience(det.cat, false);   // switch the field notes to this material
+  el.sciSub.textContent = 'Detected: ' + det.label;
+  el.sciNote.hidden = !det.note;
+  if (det.note) el.sciNoteText.textContent = det.note;
+}
+
+/* =====================================================================
+   12. FIELD NOTES (science panel)
+   ===================================================================== */
+const sci = { catId: null, idx: 0, general: 0 };
+
+/** Log-scale bar: ~1 month ≈ 25%, 450 years ≈ 94%, 1000 years = 100% */
+const decompPct = y => Math.max(8, Math.min(100, Math.log10(y * 365) / Math.log10(1000 * 365) * 100));
+
+function showScience(cat, rotate) {
+  if (sci.catId !== cat.id) { sci.catId = cat.id; sci.idx = Math.floor(Math.random() * cat.facts.length); }
+  else if (rotate) sci.idx = (sci.idx + 1) % cat.facts.length;
+
+  el.science.style.setProperty('--c', cat.color);
+  el.sciIcon.innerHTML = svgIcon(cat);
+  el.sciTitle.textContent = cat.name;
+  el.sciYears.textContent = cat.decompText;
+  el.sciBar.style.width = decompPct(cat.years).toFixed(0) + '%';
+  el.sciFact.textContent = cat.facts[sci.idx];
+  el.sciTip.textContent = cat.tip;
+}
+function showGeneralFact() {
+  el.sciFact.textContent = GENERAL_FACTS[sci.general % GENERAL_FACTS.length];
+  el.sciTip.textContent = 'Hold an item inside the ring for 2 seconds to sort it and learn about its material.';
+}
+$('#nextFact').addEventListener('click', () => {
+  if (sci.catId) showScience(CATEGORIES[sci.catId], true);
+  else { sci.general++; showGeneralFact(); }
+});
+showGeneralFact();
+
+/* =====================================================================
+   13. EXPANDED ZERO-SHOT PHOTO SCAN (on demand)
+   The fast live model remains light. Deep Scan loads CLIP only when the
+   user requests it and compares the image with an editable set of item
+   descriptions. Scores are relative similarities, not calibrated odds.
+   ===================================================================== */
+const DEEP_CANDIDATES = [
+  // Food, fruit and plant waste
+  ['a photograph of a banana peel or banana fruit scraps','Banana / fruit scraps','organic','Organic matter','Compost where accepted; remove stickers and packaging.'],
+  ['a photograph of an apple core or apple scraps','Apple / fruit scraps','organic','Organic matter','Compost where accepted; remove non-organic labels.'],
+  ['a photograph of an orange, lemon or citrus peel','Citrus fruit / peel','organic','Organic matter','Compost where accepted.'],
+  ['a photograph of strawberries, berries or grapes','Berries / grapes','organic','Organic matter','Compost where accepted.'],
+  ['a photograph of mango, papaya or pineapple peel','Tropical fruit scraps','organic','Organic matter','Remove stickers and plastic mesh first.'],
+  ['a photograph of watermelon rind or melon scraps','Melon scraps','organic','Organic matter','Compost where accepted.'],
+  ['a photograph of carrot, potato or vegetable scraps','Vegetable scraps','organic','Organic matter','Compost where accepted.'],
+  ['a photograph of lettuce, broccoli or leafy vegetable waste','Leafy vegetable scraps','organic','Organic matter','Compost where accepted.'],
+  ['a photograph of bread or leftover plain food','Food scraps','organic','Organic matter','Follow your local food-waste collection rules.'],
+  ['a photograph of eggshells or nut shells','Eggshells / shells','organic','Organic matter','Confirm local compost rules.'],
+  ['a photograph of a fresh leaf, twig or grass clippings','Garden / plant waste','organic','Plant matter','Use a local green-waste programme if available.'],
+  // Paper and cardboard
+  ['a photograph of a clean corrugated cardboard shipping box','Cardboard box','paper','Paper fibre','Flatten and keep dry.'],
+  ['a photograph of a newspaper or magazine','Newspaper / magazine','paper','Paper fibre','Keep clean and dry.'],
+  ['a photograph of a sheet of office paper or envelope','Paper / envelope','paper','Paper fibre','Keep dry and remove plastic windows if required locally.'],
+  ['a photograph of a clean paper shopping bag','Paper bag','paper','Paper fibre','Reuse or recycle if dry and clean.'],
+  ['a photograph of a cereal box or paperboard carton','Paperboard carton','paper','Paperboard; coating unknown','Check if the carton is laminated or lined.'],
+  ['a photograph of an egg carton made from molded paper pulp','Moulded-pulp egg carton','paper','Paper fibre','Check local rules; foam or plastic egg cartons differ.'],
+  ['a photograph of a paperback book or notebook','Book / notebook','paper','Mixed paper materials','Reuse or donate if usable; remove batteries or electronics if any.'],
+  ['a photograph of a paper towel or tissue','Tissue / paper towel','paper','Paper fibre; hygiene condition unknown','Used tissues may not be accepted in recycling.'],
+  ['a photograph of a greasy pizza box','Greasy food-soiled paperboard','landfill','Paperboard contaminated by food','Separate clean sections; follow local food-soiled-paper rules.'],
+  ['a photograph of a paper cup with a plastic lining','Lined paper cup','landfill','Composite paper and plastic','Look for a dedicated cup collection; ordinary paper recycling may reject it.'],
+  // Metal and cans
+  ['a photograph of an empty aluminium soda or drink can','Aluminium drink can','metal','Aluminium likely','Empty and rinse; check local can recycling rules.'],
+  ['a photograph of an empty steel food can or tin can','Steel food can','metal','Steel / tinplate likely','Empty and rinse; follow local collection rules.'],
+  ['a photograph of a metal jar lid or bottle cap','Metal lid / cap','metal','Metal likely','Check whether loose lids are accepted locally.'],
+  ['a photograph of a crumpled sheet of aluminium foil','Aluminium foil','metal','Aluminium likely','Some programmes require foil to be clean and balled together.'],
+  ['a photograph of a metal cooking pot or frying pan','Metal cookware','metal','Metal alloy unknown','Handles and non-stick coatings may require a separate route.'],
+  ['a photograph of metal cutlery such as a fork or spoon','Metal cutlery','metal','Metal likely','Reuse where possible; check local scrap-metal rules.'],
+  ['a photograph of scrap wire, nails or screws','Scrap metal hardware','metal','Metal alloy unknown','Keep sharp pieces safe and use a suitable metal collection.'],
+  ['a photograph of an aerosol spray can or pressurised can','Aerosol / pressurised can','hazardous','Pressurised container','Follow hazardous-waste rules; do not puncture or burn.'],
+  ['a photograph of a paint tin or chemical can','Paint / chemical container','hazardous','Possible chemical residue','Use a local hazardous-waste route if residue remains.'],
+  // Plastic and polymer-like item descriptions; visible type must be verified
+  ['a photograph of a clear PET water or soft-drink bottle with a recycling mark','PET bottle (resin code 1 candidate)','plastic','PET possible; verify resin code','Use the stamped resin code and local rules; appearance alone is not proof.'],
+  ['a photograph of an opaque HDPE detergent or milk bottle with a recycling mark','HDPE bottle (resin code 2 candidate)','plastic','HDPE possible; verify resin code','Check the molded code; empty and rinse if accepted.'],
+  ['a photograph of a flexible LDPE shopping bag or film packaging','LDPE bag / film (resin code 4 candidate)','plastic','LDPE possible; verify resin code','Film often requires a separate drop-off and may not go in curbside bins.'],
+  ['a photograph of a polypropylene takeaway tub or yoghurt pot with a recycling mark','PP food tub (resin code 5 candidate)','plastic','PP possible; verify resin code','Check the code and local rules; empty and rinse.'],
+  ['a photograph of a polystyrene foam cup or protective foam tray','Polystyrene foam (resin code 6 candidate)','plastic','PS / EPS possible; verify markings','Foam recycling is location-dependent and often requires a special drop-off.'],
+  ['a photograph of a PVC pipe or rigid vinyl plastic fitting','PVC pipe (resin code 3 candidate)','plastic','PVC possible; verify markings','Do not assume PVC is accepted in household packaging recycling.'],
+  ['a photograph of a hard ABS plastic toy shell or building block','ABS plastic toy / building block','plastic','ABS possible; polymer unverified','Toys can mix plastics, metal and electronics; check for batteries or components.'],
+  ['a photograph of a colourful plastic toy or action figure','Plastic toy','plastic','Plastic likely; polymer unknown','Check whether the toy includes batteries, magnets, electronic parts or mixed materials.'],
+  ['a photograph of a plastic doll or small toy figure','Plastic doll / figure','plastic','Plastic likely; polymer unknown','Mixed-material toys may need disassembly or a specialist programme.'],
+  ['a photograph of interlocking plastic construction bricks','Plastic building bricks','plastic','Rigid plastic; exact polymer unknown','Reuse or donate if usable; brand take-back schemes may exist.'],
+  ['a photograph of a plastic food storage container or lunch box','Reusable plastic container','plastic','Polymer unknown','Check resin code and condition; reuse if food-safe and intact.'],
+  ['a photograph of a clear plastic clamshell fruit container','Clear plastic clamshell','plastic','PET or other polymer possible','Check the molded code; remove food and labels if local rules require.'],
+  ['a photograph of a plastic shampoo or lotion bottle','Personal-care plastic bottle','plastic','HDPE or PET possible; unverified','Check resin code and local rules; empty and rinse.'],
+  ['a photograph of a rigid plastic bucket or storage crate','Rigid plastic bucket / crate','plastic','Polymer unknown','Look for a resin code; large items may use a drop-off route.'],
+  ['a photograph of a plastic bottle cap or lid','Plastic cap / lid','plastic','Polymer unknown','Follow local cap instructions; caps may be collected separately.'],
+  ['a photograph of a flexible plastic wrapper or crisp packet','Flexible / mixed wrapper','landfill','May be a multilayer composite','Some stores accept specific clean films; mixed snack wrappers are often residual waste.'],
+  ['a photograph of bubble wrap or clear plastic shipping film','Plastic shipping film','plastic','Film polymer unknown','Use a film take-back scheme if available; do not contaminate paper recycling.'],
+  ['a photograph of a plastic toothbrush or comb','Plastic personal-care item','plastic','Mixed material possible','Separate replaceable heads or metal parts if possible; check local acceptance.'],
+  ['a photograph of a plastic drinking cup or disposable plate','Plastic cup / plate','plastic','Polymer unknown','Food contamination and local rules determine whether it is accepted.'],
+  ['a photograph of an expanded foam packaging block','Protective foam packaging','plastic','EPS / other foam possible','Check specialist foam drop-off options.'],
+  // Glass
+  ['a photograph of a clear glass bottle','Glass bottle','glass','Container glass likely','Rinse and use glass collection where available.'],
+  ['a photograph of a glass jam jar or preserving jar','Glass food jar','glass','Container glass likely','Empty and rinse; check lids and local collection rules.'],
+  ['a photograph of a drinking glass or goblet','Drinking glassware','glass','Glass type unknown','Do not assume drinking glasses recycle with bottles and jars.'],
+  ['a photograph of a broken glass shard','Broken glass','glass','Glass; sharp edges','Package safely and follow the local broken-glass instructions.'],
+  ['a photograph of a bathroom or wall mirror','Mirror','landfill','Glass with reflective backing','Mirrors are not usually accepted with container glass; check local disposal guidance.'],
+  ['a photograph of a ceramic mug or porcelain plate','Ceramic / porcelain','landfill','Ceramic, not container glass','Use a reuse or appropriate residual route; do not put ceramics in bottle-glass collection.'],
+  ['a photograph of a heat-resistant glass casserole dish','Heat-resistant cookware glass','landfill','Special glass composition','Do not put cookware glass with container glass.'],
+  ['a photograph of a glass window pane','Window glass','glass','Flat glass; route differs by location','Use a glazing or flat-glass collection where available; broken panes need safe handling.'],
+  // Electronics and e-waste
+  ['a photograph of a smartphone or mobile phone','Smartphone','electronics','Mixed electronics; battery may be present','Use an authorised e-waste collection and wipe personal data.'],
+  ['a photograph of a laptop computer','Laptop','electronics','Mixed electronics; battery may be present','Use e-waste collection; remove personal data.'],
+  ['a photograph of a keyboard or computer mouse','Computer keyboard / mouse','electronics','Electronics with mixed plastics and metals','Use e-waste or electronics take-back.'],
+  ['a photograph of a tablet or e-reader','Tablet / e-reader','electronics','Electronics; battery likely','Use an authorised e-waste route and wipe personal data.'],
+  ['a photograph of a power adapter or phone charger','Charger / power adapter','electronics','Electronics with wire and metal','Use an electronics collection; do not place loose cables in ordinary recycling.'],
+  ['a photograph of a tangled USB cable or power cord','Cable / power cord','electronics','Copper and plastic insulation possible','Use a cable or e-waste collection.'],
+  ['a photograph of a printed circuit board','Circuit board','electronics','Mixed metals and electronic components','Specialist e-waste recovery is recommended.'],
+  ['a photograph of headphones or earbuds','Headphones / earbuds','electronics','Mixed plastics, metals and possible battery','Use an e-waste route, especially for wireless devices.'],
+  ['a photograph of a television or computer monitor','TV / monitor','electronics','Electronics; screen material varies','Use a suitable e-waste collection; screens may require special handling.'],
+  ['a photograph of a game controller or video game console','Game console / controller','electronics','Mixed electronic materials','Use electronics take-back; check for batteries.'],
+  ['a photograph of a digital camera','Digital camera','electronics','Mixed electronics; battery may be present','Use e-waste collection; remove memory cards if appropriate.'],
+  ['a photograph of a router or modem','Router / modem','electronics','Electronics with mixed plastic and metals','Use a manufacturer take-back or e-waste point.'],
+  ['a photograph of a hard drive or USB flash drive','Storage drive','electronics','Electronic components','Use e-waste recycling; securely erase data where possible.'],
+  ['a photograph of a printer or ink cartridge','Printer / ink cartridge','electronics','Electronics and ink residue possible','Check manufacturer take-back options; keep ink separate from ordinary waste.'],
+  // Wood and garden timber
+  ['a photograph of a clean wooden plank or board','Wood plank / board','wood','Wood; treatment unknown','Reuse or use a clean-wood collection if accepted.'],
+  ['a photograph of plywood or an engineered wood board','Plywood / engineered wood','wood','Glued wood layers','May need separate handling; check local waste rules.'],
+  ['a photograph of a wooden chair or small piece of furniture','Wooden furniture','wood','Wood mixed with finishes and hardware','Repair, reuse or donate when safe; remove hardware if required.'],
+  ['a photograph of a wooden spoon or wooden kitchen utensil','Wooden utensil','wood','Wood; coating unknown','Reuse if safe; treated or painted wood is different from clean untreated wood.'],
+  ['a photograph of a tree branch, twig or log','Branch / log','wood','Natural wood','Use green-waste collection or composting if locally allowed.'],
+  ['a photograph of sawdust or small untreated wood chips','Sawdust / wood chips','wood','Wood; contamination unknown','Only compost clean untreated wood where accepted.'],
+  ['a photograph of a painted or pressure-treated timber offcut','Treated / painted wood','wood','Potential coatings or preservatives','Do not burn; follow local specialist disposal rules.'],
+  ['a photograph of a wooden crate or pallet','Wooden crate / pallet','wood','Wood with possible nails or treatment','Reuse where possible; check for nails and treatment stamps.'],
+  ['a photograph of a bamboo utensil or bamboo item','Bamboo item','wood','Plant fibre; coatings unknown','Reuse first; compost only when clean and locally accepted.'],
+  ['a photograph of a wooden toy block','Wooden toy','wood','Wood; paint or coating unknown','Reuse or donate if intact; paint and finishes may affect disposal.'],
+  // Batteries and special waste
+  ['a photograph of a loose AA or AAA battery','Household battery','hazardous','Battery chemistry unknown','Use a dedicated battery collection; prevent terminals touching if instructed.'],
+  ['a photograph of a rechargeable lithium-ion battery pack','Lithium-ion battery pack','hazardous','Potential fire risk if damaged','Never put in ordinary rubbish; isolate damaged batteries and follow local safety advice.'],
+  ['a photograph of a coin cell or button battery','Button / coin battery','hazardous','Battery chemistry unknown','Keep away from children and use a dedicated battery collection.'],
+  ['a photograph of a car battery','Vehicle battery','hazardous','Lead-acid or other battery chemistry','Return to a battery retailer or authorised collection point.'],
+  ['a photograph of a fluorescent tube or compact fluorescent lamp','Fluorescent lamp','hazardous','May contain hazardous substances','Use a special lamp collection; do not break.'],
+  ['a photograph of a household light bulb','Light bulb','hazardous','Bulb type unknown','LED, fluorescent and incandescent bulbs may need different routes; check local rules.'],
+  ['a photograph of a bottle containing paint, solvent or household chemical','Chemical / paint container','hazardous','Residue may be hazardous','Do not pour into drains; follow local hazardous-waste instructions.'],
+  ['a photograph of a medicine blister pack or pill packaging','Medicine packaging','landfill','Mixed foil and plastic possible','Use pharmacy take-back for medicines; packaging rules vary.'],
+  // Textiles and mixed residual waste
+  ['a photograph of clean folded clothing or a shirt','Clothing','textile','Fibre blend unknown','Donate or use textile collection if clean and dry.'],
+  ['a photograph of socks, towels or household fabric','Household textiles','textile','Fibre blend unknown','Reuse or use a textile collection; keep dry and clean.'],
+  ['a photograph of a shoe, sneaker or boot','Footwear','textile','Mixed rubber, textile, leather and adhesive','Donate usable shoes or check specialist take-back.'],
+  ['a photograph of a teddy bear or plush stuffed toy','Stuffed toy','textile','Mixed textile filling and coverings','Donate if clean and intact; remove batteries from electronic toys.'],
+  ['a photograph of a blanket, bedsheet or curtain','Fabric / household textile','textile','Fibre blend unknown','Donate or use a textile recovery service if accepted.'],
+  ['a photograph of an old carpet or rug','Carpet / rug','textile','Mixed fibre and backing materials','Check specialist carpet collection; not usually household recycling.'],
+  ['a photograph of a disposable nappy or diaper','Nappy / diaper','landfill','Mixed absorbent materials','Residual waste unless a dedicated local service exists.'],
+  ['a photograph of a used sponge or very dirty mixed-material item','Used sponge / contaminated item','landfill','Material and contamination unknown','Residual route may be required; do not contaminate clean recycling.'],
+  ['a photograph of a mixed snack wrapper made of plastic and foil','Mixed-material snack wrapper','landfill','Laminated composite material','Check special film collection options; many mixed wrappers are not curbside recyclable.'],
+  ['a photograph of an avocado pit, fruit seed or nut shell','Fruit seed / nut shell','organic','Plant matter','Compost only where local services accept it.'],
+  ['a photograph of coffee grounds or used tea leaves','Coffee grounds / tea leaves','organic','Organic matter','Compost where accepted; keep tea bags with synthetic mesh separate.'],
+  ['a photograph of a clean aluminium drinks can ring-pull','Can ring-pull / small metal tab','metal','Metal likely; alloy unknown','Keep safe from sharp edges and follow local metal recycling rules.'],
+  ['a photograph of a reusable hard plastic water bottle','Reusable plastic bottle','plastic','Polymer unknown','Check the molded resin code and inspect for mixed lids or metal parts.'],
+  ['a photograph of a plastic lunch box with a hinged lid','Plastic lunch box','plastic','Polymer unknown; mixed hinge possible','Reuse if safe; check resin markings and separate mixed-material parts if needed.'],
+  ['a photograph of a plastic garden pot or nursery plant pot','Plastic plant pot','plastic','Polymer unknown','Reuse pots where possible; check whether local facilities accept them.'],
+  ['a photograph of a plastic toy car with wheels','Toy car','plastic','Mixed plastic and metal possible','Remove batteries if present; reuse or donate if intact.'],
+  ['a photograph of a robotic or electronic toy with a battery compartment','Electronic toy','electronics','Mixed plastics and electronics; battery may be present','Remove batteries only as instructed and use e-waste collection.'],
+  ['a photograph of a wooden pencil or pencil shavings','Wooden pencil / shavings','wood','Wood with graphite or coating','Pencil shavings may be compostable only where local rules allow; painted pencils vary.'],
+  ['a photograph of a plastic syringe or medical sharps item','Medical sharps / special item','hazardous','Potential biohazard or sharp','Never put sharps loose in recycling; follow a designated medical/sharps collection route.'],
+  ['a photograph of an unknown object whose material cannot be identified','Unknown object','landfill','Material not confirmed','Do not assume it is non-recyclable; check markings or local guidance before disposal.']
+].map(([prompt,item,cat,material,guidance]) => ({prompt,item,cat,material,guidance}));
+
+function setDeepStatus(state, text) {
+  const n = document.getElementById('deepStatus');
+  n.className = 'deep-chip ' + state;
+  n.textContent = text;
+}
+
+async function getDeepClassifier() {
+  if (deepClassifier) return { classifier: deepClassifier, RawImage: deepRawImage };
+  if (!deepClassifierPromise) {
+    deepClassifierPromise = (async () => {
+      setDeepStatus('loading', 'Loading optional model…');
+      const hf = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');
+      deepRawImage = hf.RawImage;
+      deepClassifier = await hf.pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32', { dtype: 'q8' });
+      setDeepStatus('ready', 'Deep Scan ready');
+      return { classifier: deepClassifier, RawImage: deepRawImage };
+    })().catch(err => {
+      deepClassifierPromise = null;
+      deepClassifier = null;
+      setDeepStatus('error', 'Deep Scan unavailable');
+      throw err;
+    });
+  }
+  return deepClassifierPromise;
+}
+
+async function runDeepScan(imageInput, sourceLabel) {
+  const btn = document.getElementById('deepScanBtn');
+  const resultsBox = document.getElementById('deepResults');
+  btn.disabled = true;
+  document.getElementById('useDeepResult').disabled = true;
+  resultsBox.hidden = true;
+  setDeepStatus('loading', 'Preparing image…');
+  try {
+    const loaded = await getDeepClassifier();
+    setDeepStatus('loading', 'Comparing item descriptions…');
+    const image = imageInput && imageInput.width && imageInput.height ? imageInput : await loaded.RawImage.fromBlob(imageInput);
+    const outputs = await loaded.classifier(image, DEEP_CANDIDATES.map(x => x.prompt));
+    const lookup = new Map(DEEP_CANDIDATES.map(x => [x.prompt, x]));
+    const ranked = outputs.map(o => ({ candidate: lookup.get(o.label), score: Number(o.score) || 0 }))
+      .filter(o => o.candidate).sort((a,b) => b.score - a.score).slice(0, 5);
+    if (!ranked.length) throw new Error('The model did not return a known candidate.');
+    latestDeepMatch = { ...ranked[0].candidate, score: ranked[0].score, source: sourceLabel };
+    const itemNode = document.getElementById('deepItem');
+    const categoryNode = document.getElementById('deepCategory');
+    itemNode.textContent = latestDeepMatch.item;
+    categoryNode.textContent = CATEGORIES[latestDeepMatch.cat].name;
+    categoryNode.style.background = CATEGORIES[latestDeepMatch.cat].color;
+    categoryNode.style.color = '#04140e';
+    document.getElementById('deepScore').textContent = 'Relative match score: ' + (latestDeepMatch.score * 100).toFixed(1) + '% (not a probability)';
+    document.getElementById('deepMaterial').textContent = 'Possible material: ' + latestDeepMatch.material + '. This is a visual estimate, not a material test.';
+    document.getElementById('deepGuidance').textContent = latestDeepMatch.guidance;
+    const list = document.getElementById('deepAlternatives');
+    list.replaceChildren();
+    ranked.slice(1,4).forEach(({candidate,score}) => {
+      const li = document.createElement('li');
+      const name = document.createElement('span'); name.className = 'alt-name'; name.textContent = candidate.item;
+      const scoreNode = document.createElement('span'); scoreNode.className = 'alt-score'; scoreNode.textContent = (score * 100).toFixed(1) + '%';
+      const cat = document.createElement('span'); cat.className = 'alt-cat'; cat.textContent = CATEGORIES[candidate.cat].name + ' · ' + candidate.material;
+      const track = document.createElement('div'); track.className = 'alt-track';
+      const bar = document.createElement('span'); bar.style.width = Math.max(2, Math.min(100, score * 100)).toFixed(1) + '%'; track.appendChild(bar);
+      li.append(name, scoreNode, cat, track); list.appendChild(li);
+    });
+    resultsBox.hidden = false;
+    document.getElementById('useDeepResult').disabled = false;
+    setDeepStatus('ready', 'Scan complete · ' + DEEP_CANDIDATES.length + ' candidates');
+    toast('Deep Scan found a best visual match. Review before sorting.');
+  } catch (err) {
+    console.error('Deep Scan failed:', err);
+    setDeepStatus('error', 'Could not finish scan');
+    toast('Deep Scan failed. Check your internet connection, then try again.', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('deepScanBtn').addEventListener('click', async () => {
+  if (!el.video.srcObject || el.video.readyState < 2) {
+    toast('Start the camera first, or choose Scan a photo.', true);
+    return;
+  }
+  if (!grabCrop()) { toast('The camera image is not ready yet.', true); return; }
+  // The crop is a still snapshot of the item ring; inference does not run continuously.
+  const scanCanvas = document.createElement('canvas');
+  scanCanvas.width = cropCanvas.width; scanCanvas.height = cropCanvas.height;
+  scanCanvas.getContext('2d').drawImage(cropCanvas, 0, 0);
+  await runDeepScan(scanCanvas, 'camera');
+});
+document.getElementById('photoInput').addEventListener('change', async event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('Choose an image file.', true); event.target.value = ''; return; }
+  if (file.size > 15 * 1024 * 1024) { toast('Please choose an image smaller than 15 MB.', true); event.target.value = ''; return; }
+  await runDeepScan(file, 'photo');
+  event.target.value = '';
+});
+document.getElementById('useDeepResult').addEventListener('click', () => {
+  if (!latestDeepMatch || !CATEGORIES[latestDeepMatch.cat]) return;
+  const match = latestDeepMatch;
+  const cat = CATEGORIES[match.cat];
+  const det = {
+    cat, label: match.item, confidence: Math.max(0.01, Math.min(1, match.score)),
+    item: match.item, material: match.material, guidance: match.guidance,
+    detail: match.material + ' — ' + match.guidance,
+    note: ['glass','electronics','hazardous'].includes(match.cat) ? match.guidance : null,
+    source: 'deep-scan', userConfirmed: true
+  };
+  deepOverride = { det, until: performance.now() + CONFIG.HOLD_MS + 2600 };
+  game.simUntil = 0; game.simCat = null; game.locked = false; game.lockedCat = null;
+  game.holdCat = null; game.progress = 0; game.current = det; game.lastSeen = performance.now();
+  history.length = 0;
+  ingestDetection(det, performance.now());
+  toast('Using your selected suggestion: ' + cat.name + '. Keep the camera on it while the timer completes.');
+});
+setDeepStatus('','Optional model not loaded');
+
+/* =====================================================================
+   13. CONFETTI / PARTICLES
+   ===================================================================== */
+const fx = $('#fx'), fctx = fx.getContext('2d');
+let particles = [];
+function resizeFx() { fx.width = innerWidth; fx.height = innerHeight; }
+addEventListener('resize', resizeFx); resizeFx();
+
+function burst(x, y, color, count) {
+  const palette = [color, color, '#e3c98f', '#f4efe2', '#5dffb6'];
+  for (let i = 0; i < count; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.3, s = 4 + Math.random() * 9;
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, size: 4 + Math.random() * 6,
+      rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, life: 1, decay: 0.008 + Math.random() * 0.012,
+      color: palette[(Math.random() * palette.length) | 0], round: Math.random() < 0.35 });
+  }
+}
+function stepFx() {
+  if (!particles.length) return;
+  fctx.clearRect(0, 0, fx.width, fx.height);
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.vy += 0.25; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life -= p.decay;
+    fctx.save(); fctx.globalAlpha = Math.max(0, p.life); fctx.translate(p.x, p.y); fctx.rotate(p.rot);
+    fctx.fillStyle = p.color; fctx.shadowColor = p.color; fctx.shadowBlur = 8;
+    if (p.round) { fctx.beginPath(); fctx.arc(0, 0, p.size / 2, 0, 7); fctx.fill(); }
+    else fctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+    fctx.restore();
+  }
+  if (!particles.length) fctx.clearRect(0, 0, fx.width, fx.height);
+}
+
+/* =====================================================================
+   14. THE LENS OVERLAY  (drawn on a canvas above the video)
+       MobileNet classifies the WHOLE frame (it doesn't output boxes), so
+       the ring is a target zone for the player. Its 60 tick marks ARE the
+       Hold & Sort timer: they light up one by one over 2 seconds.
+   ===================================================================== */
+const octx = el.overlay.getContext('2d');
+const T0 = performance.now();                 // for the one-time opening sweep
+const TICKS = 60;
+const easeOut = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+
+function drawOverlay(now) {
+  const dpr = window.devicePixelRatio || 1, w = el.overlay.clientWidth, h = el.overlay.clientHeight;
+  if (el.overlay.width !== Math.round(w * dpr) || el.overlay.height !== Math.round(h * dpr)) {
+    el.overlay.width = Math.round(w * dpr); el.overlay.height = Math.round(h * dpr);
+  }
+  octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  octx.clearRect(0, 0, w, h);
+
+  const { cx, cy, R } = ringGeo(w, h);
+  const color = game.active ? game.current.cat.color : '#e3c98f';
+
+  // darken everything outside the ring (the "even-odd" fill cuts a circular hole)
+  octx.fillStyle = 'rgba(2,20,16,.5)';
+  octx.beginPath(); octx.rect(0, 0, w, h); octx.arc(cx, cy, R, 0, Math.PI * 2); octx.fill('evenodd');
+
+  // gold ring + faint inner ring
+  octx.lineWidth = 1.5; octx.strokeStyle = 'rgba(227,201,143,.65)';
+  octx.beginPath(); octx.arc(cx, cy, R, 0, Math.PI * 2); octx.stroke();
+  octx.lineWidth = 1; octx.strokeStyle = 'rgba(227,201,143,.18)';
+  octx.beginPath(); octx.arc(cx, cy, R - 9, 0, Math.PI * 2); octx.stroke();
+
+  // how many ticks are lit?  hold progress, or a one-time opening sweep
+  let lit = 0;
+  if (game.locked && game.active) lit = 1;
+  else if (game.progress > 0) lit = game.progress;
+  else if (!reduceMotion && now - T0 < 1800) lit = easeOut((now - T0) / 1800);
+
+  octx.lineCap = 'round';
+  for (let i = 0; i < TICKS; i++) {
+    const a = -Math.PI / 2 + (i / TICKS) * Math.PI * 2, major = i % 5 === 0;
+    const r1 = R + 8, r2 = R + (major ? 22 : 16), on = (i / TICKS) < lit;
+    octx.lineWidth = major ? 3 : 2;
+    octx.strokeStyle = on ? color : 'rgba(244,239,226,.2)';
+    octx.shadowColor = color; octx.shadowBlur = on ? 12 : 0;
+    octx.beginPath();
+    octx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    octx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    octx.stroke();
+  }
+  octx.shadowBlur = 0;
+
+  // slow radar sweep inside the ring while scanning
+  if (game.running && !reduceMotion) {
+    const a0 = (now / 1400) % (Math.PI * 2);
+    for (let k = 0; k < 16; k++) {
+      octx.strokeStyle = 'rgba(227,201,143,' + ((1 - k / 16) * 0.45).toFixed(3) + ')';
+      octx.lineWidth = 2;
+      octx.beginPath(); octx.arc(cx, cy, R - 4, a0 - (k + 1) * 0.04, a0 - k * 0.04); octx.stroke();
+    }
+  }
+
+  if (game.running) {
+    // countdown number in the middle while holding
+    if (game.progress > 0 && !game.locked) {
+      octx.fillStyle = 'rgba(244,239,226,.88)';
+      octx.font = 'italic 500 ' + Math.round(R * 0.42) + 'px "Bodoni Moda",Georgia,serif';
+      octx.textAlign = 'center'; octx.textBaseline = 'middle';
+      octx.fillText((CONFIG.HOLD_MS * (1 - game.progress) / 1000).toFixed(1), cx, cy);
+    } else if (game.locked && game.active) {            // check mark after success
+      octx.strokeStyle = color; octx.lineWidth = 8; octx.shadowColor = color; octx.shadowBlur = 22;
+      octx.beginPath(); octx.moveTo(cx - R * .2, cy + 2); octx.lineTo(cx - R * .05, cy + R * .17); octx.lineTo(cx + R * .24, cy - R * .16); octx.stroke();
+      octx.shadowBlur = 0;
+    }
+
+    // caption under the ring
+    const tag = game.active ? game.current.cat.name + '  ' + Math.round(game.current.confidence * 100) + '%' : ((game.bodyLabel && now - game.bodySeen <= CONFIG.GRACE_MS) ? game.bodyLabel + ' detected. Hold an item in the ring' : 'Place the item inside the ring');
+    octx.font = '600 14px "Hanken Grotesk",system-ui,sans-serif';
+    octx.textAlign = 'center'; octx.textBaseline = 'middle';
+    const tw = octx.measureText(tag).width + 28, ty = cy + R + 40;
+    octx.fillStyle = 'rgba(2,20,16,.7)';
+    octx.beginPath(); octx.roundRect ? octx.roundRect(cx - tw / 2, ty - 15, tw, 30, 15) : octx.rect(cx - tw / 2, ty - 15, tw, 30); octx.fill();
+    octx.fillStyle = game.active ? color : 'rgba(244,239,226,.85)';
+    octx.fillText(tag, cx, ty + 1);
+  }
+}
+
+/* =====================================================================
+   15. MAIN LOOP  (runs ~60 times per second)
+       - every 150 ms: ask the AI for a prediction (without freezing the page)
+       - every frame:  update the game logic, the lens and the confetti
+   ===================================================================== */
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  const simActive = now < game.simUntil;
+  const camOn = !!(el.video.srcObject && el.video.readyState >= 2);
+
+  if (now - game.lastClassify >= CONFIG.CLASSIFY_INTERVAL_MS) {
+    if (deepOverride && now < deepOverride.until) {
+      game.lastClassify = now;
+      ingestDetection(deepOverride.det, now);           // user accepted a detailed suggestion
+    } else if (deepOverride && now >= deepOverride.until) {
+      deepOverride = null;
+    }
+    if (!(deepOverride && now < deepOverride.until)) {
+      if (simActive && SIM[game.simCat]) {               // sample item: fake predictions
+        game.lastClassify = now;
+        handlePredictions(SIM[game.simCat].map(([n, p]) => ({ className: n, probability: p })), now, SIM_BODY[game.simCat] || null);
+      } else if (model && camOn && !game.busy) {         // real AI prediction on the live frame
+        game.busy = true; game.lastClassify = now;
+        const crop = grabCrop();                        // the square around the ring
+        const body = measureBody(crop);                 // hand / face / skin coverage of that square
+        model.classify(crop ? cropCanvas : el.video, CONFIG.TOP_K)
+          .then(preds => handlePredictions(preds, performance.now(), body))
+          .catch(err => console.error(err))
+          .finally(() => { game.busy = false; });
+      }
+    }
+  }
+
+  tickGame(now);
+  drawOverlay(now);
+  stepFx();
+}
+
+/* =====================================================================
+   16. BUTTONS + START-UP
+   ===================================================================== */
+el.startBtn.addEventListener('click', startCamera);
+el.startBtn2.addEventListener('click', startCamera);
+el.flipBtn.addEventListener('click', switchCamera);
+$('#soundBtn').addEventListener('click', e => {
+  soundOn = !soundOn; unlockAudio();
+  e.currentTarget.textContent = soundOn ? 'Sound on' : 'Sound off';
+});
+$('#resetBtn').addEventListener('click', () => {
+  Object.assign(game, { score: 0, streak: 0, multiplier: 1, sorted: 0, locked: false, current: null, holdCat: null, progress: 0 });
+  for (const k in game.counts) { game.counts[k] = 0; setText($('#count-' + k), '0'); }
+  history.length = 0; updateScoreboard(false); toast('Game reset');
+});
+
+requestAnimationFrame(frame);
+
+/* Ask for the camera as soon as the page opens (the browser shows its own Allow popup).
+   If permission was already granted, it simply starts. If the user fixes a block in the
+   address bar later, the permission listener below starts the camera automatically. */
+(async function init() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showCameraProblem({ name: 'NoMediaDevices' }); return; }
+  let state = 'prompt';
+  try {
+    const st = await navigator.permissions.query({ name: 'camera' });
+    state = st.state;
+    st.onchange = () => { if (st.state === 'granted' && !el.video.srcObject && !starting) startCamera(); };
+  } catch (e) { /* Permissions API not available: just try */ }
+  if (state === 'denied') showCameraProblem({ name: 'NotAllowedError' });
+  else startCamera();
+})();
+})();
+</script>
+</body>
+</html>
